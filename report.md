@@ -3,8 +3,6 @@
 **Auteurs :** Samuel Roland, Timothée Van Hove
 
 ## 1. Introduction
-Les bases de données distribuées sont devenues un sujet incontournable aujourd’hui, surtout avec la montée en puissance des applications qui doivent gérer des volumes énormes de données tout en restant rapides et fiables. Pour répondre à ces besoins, ces systèmes répartissent les données sur plusieurs serveurs, garantissant ainsi une meilleure performance, une meilleure tolérance aux pannes, et une disponibilité continue. Dès qu’une application doit évoluer à grande échelle, il lui faut une solution de ce genre.
-
 Au cours des dernières années, les bases de données NoSQL ont explosé en popularité, en grande partie parce qu’elles répondent naturellement à ces problématiques de distribution. Des systèmes comme MongoDB, Cassandra ou DynamoDB ont été conçus pour gérer des environnements massivement distribués, souvent au détriment des fonctionnalités relationnelles traditionnelles. Cette popularité des NoSQL a poussé les systèmes relationnels, comme PostgreSQL ou MySQL, à évoluer pour ne pas être laissés sur la touche. Pour cela, de nouvelles fonctionnalités et extensions ont vu le jour, permettant à ces bases de données relationnelles de rester compétitives tout en intégrant des mécanismes de réplication, de sharding et de cohérence.
 
 PostgreSQL, en particulier, est un excellent exemple de cette évolution. Initialement, c’est un système relationnel classique et conforme aux standards SQL. Mais grâce à un écosystème dynamique d’extensions et de forks comme Citus, Pgpool-II ou BDR, PostgreSQL peut aujourd’hui être utilisé comme une base distribuée capable de rivaliser avec certaines solutions NoSQL, tout en conservant ses points forts comme la gestion fine des transactions.
@@ -12,62 +10,94 @@ PostgreSQL, en particulier, est un excellent exemple de cette évolution. Initia
 Dans ce rapport, nous allons explorer comment PostgreSQL a intégré ces mécanismes de distribution. Nous parleront des techniques de réplication et de sharding, mais aussi des outils qui permettent de gérer les pannes ou de rééquilibrer les données. On verra aussi en quoi PostgreSQL se positionne différemment des bases NoSQL et quels compromis il offre dans un environnement distribué.
 
 ## 2. Vue d’ensemble des mécanismes de distribution dans PostgreSQL
+## 2. Vue d’ensemble des mécanismes de distribution dans PostgreSQL
+
+PostgreSQL, en tant que SGBD relationnel évolutif, s’est adapté aux besoins modernes des systèmes distribués. Il propose des mécanismes natifs et extensibles pour gérer la réplication, le partitionnement, et le sharding. Ces fonctionnalités permettent de répondre à des problématiques telles que la haute disponibilité, la scalabilité, et la gestion des charges massives.
+
 ### 2.1. Réplication
-PostgreSQL propose plusieurs mécanismes de réplication permettant de répondre à des besoins variés en matière de scalabilité, de disponibilité et de tolérance aux pannes. Ces mécanismes se distinguent principalement par leurs modèles de synchronisation et leur granularité.
 
-**Réplication synchrone :**
+La réplication dans PostgreSQL repose sur la transmission des journaux de modifications, appelés Write-Ahead Logs. Ces journaux assurent que les modifications apportées à la base de données sont enregistrées et propagées aux répliques. PostgreSQL prend en charge plusieurs modes de réplication pour répondre à différents cas d’usage.
 
-Dans ce mode, les données sont écrites sur un ou plusieurs nœuds répliqués (followers) avant que la transaction ne soit confirmée au client.
+#### **Réplication synchrone**
 
-- Avantages : Garantit que toutes les répliques impliquées sont cohérentes et à jour à tout moment.
-- Inconvénients : La latence des transactions peut augmenter, surtout si les répliques sont géographiquement éloignées.
-- Cas d’usage : Applications critiques nécessitant une cohérence forte, telles que les systèmes financiers.
+La réplication synchrone garantit que toutes les répliques concernées (ou un sous-ensemble spécifié) reçoivent les modifications avant que la transaction ne soit validée sur le leader. Ce processus repose sur la gestion des journaux WAL.
 
-**Réplication asynchrone :**
+- **Mécanisme interne :** Les répliques synchrones signalent leur réception des données en renvoyant un accusé de réception (*acknowledgement*). Le leader attend ces confirmations avant de valider la transaction. Cette attente est configurée via le paramètre `synchronous_commit` dans `postgresql.conf`.
+- **Avantages :**
+  - Assure une cohérence forte (*strong consistency*) dans les données répliquées.
+  - Utile dans des environnements critiques où aucune perte de données n'est acceptable, comme les transactions bancaires.
+- **Limites :**
+  - Augmentation de la latence, notamment lorsque les répliques sont géographiquement distantes.
+  - Risque de goulots d’étranglement si une réplique synchrone est défaillante.
 
-Les transactions sont confirmées au client dès que les modifications sont écrites sur le leader. Les followers reçoivent ensuite les mises à jour avec un léger délai.
+#### **Réplication asynchrone**
 
-- Avantages : Amélioration de la latence des transactions côté client.
-- Inconvénients : Peut entraîner des lectures obsolètes sur les followers en cas de retard de réplication.
-- Cas d’usage : Applications tolérant des incohérences temporaires, comme l’analyse de données.
+Dans ce mode, les répliques reçoivent les journaux WAL après validation des transactions sur le leader. Ce mode est le plus utilisé pour améliorer la performance.
 
-**Réplication logique :**
+- **Mécanisme interne :** Les journaux WAL sont diffusés via le Streaming Replication. Les processus appelés **WAL sender** et **WAL receiver** gèrent respectivement l’envoi et la réception des journaux.
+- **Avantages :**
+  - Temps de réponse réduit pour les transactions.
+  - Les répliques peuvent être réparties sur de longues distances sans impact significatif sur la performance du leader.
+- **Limites :**
+  - Risque d’incohérences temporaires entre le leader et les répliques (*replication lag*).
+  - Non adapté aux cas nécessitant une cohérence stricte.
 
-Permet de répliquer uniquement certaines parties de la base de données ou de transformer les données pendant leur réplication. Les événements sont transmis au niveau des lignes, ce qui est plus flexible que la réplication physique.
+#### **Réplication logique**
 
-- Avantages : Supporte des cas avancés tels que la migration inter-version et l'intégration de données entre systèmes hétérogènes.
-- Inconvénients : Configuration plus complexe et performance légèrement moindre comparée à la réplication physique.
-- Cas d’usage : Intégration avec des systèmes tiers, migration progressive entre bases de données.
+La réplication logique permet une granularité et une flexibilité accrues. Contrairement à la réplication physique, qui copie directement les blocs de données, elle fonctionne au niveau des transactions et des lignes. Cela permet de répliquer uniquement une partie des données ou de transformer celles-ci pendant leur transfert.
 
-**Cas d’usage typiques de la réplication dans PostgreSQL :**
+- **Mécanisme interne :** La réplication logique repose sur des slots de réplication, configurés via des commandes comme `CREATE PUBLICATION` et `CREATE SUBSCRIPTION`. Ces publications définissent quelles tables ou quelles lignes sont répliquées.
+- **Cas d’usage :**
+  - Migration inter-version de PostgreSQL.
+  - Intégration de bases de données hétérogènes.
+  - Synchronisation de bases de données spécifiques, par exemple, pour des environnements multi-tenants.
+- **Limites :**
+  - Plus complexe à configurer que la réplication physique.
+  - Performances légèrement inférieures à celles de la réplication physique.
 
-- **Scalabilité en lecture :** Les répliques asynchrones sont souvent utilisées pour répartir les charges de lecture entre plusieurs nœuds.
-- **Haute disponibilité :** La réplication synchrone permet de basculer rapidement sur un follower en cas de panne du leader.
-- **Migration et intégration :** La réplication logique facilite le transfert des données vers de nouveaux systèmes sans interruption de service.
+#### **Résumé des cas d’usage de la réplication dans PostgreSQL**
+
+- **Scalabilité en lecture :** Les répliques asynchrones permettent de répartir les requêtes en lecture entre plusieurs nœuds.
+- **Haute disponibilité :** La réplication synchrone garantit une tolérance aux pannes en permettant un failover rapide vers une réplique cohérente.
+- **Migration et intégration :** La réplication logique facilite les migrations de versions et l’intégration de données dans des systèmes externes.
 
 ### 2.2. Partitionnement et sharding
-Avec l'augmentation des volumes de données et des exigences en matière de performance, PostgreSQL fournit des outils pour diviser et distribuer les données, réduisant ainsi les contraintes sur un seul nœud.
 
-**Différence entre partitionnement logique et sharding :**
+PostgreSQL offre des fonctionnalités de partitionnement. Bien qu’il ne prenne pas en charge nativement le sharding distribué, des extensions comme **Citus** comblent ce manque.
 
-Le partitionnement logique divise une table unique en sous-tables basées sur des critères définis (par exemple, plages de dates ou plages de valeurs). La gestion est transparente pour l'utilisateur dans PostgreSQL. Les partitions restent sur le même serveur ou cluster.
+#### **Différence entre partitionnement logique et sharding**
 
-- Cas d’usage : Optimisation des requêtes sur de très grandes tables grâce à l'exclusion des partitions non pertinentes.
+- **Partitionnement logique :** PostgreSQL divise une table en sous-tables (partitions) selon des critères définis, comme une plage de dates ou des valeurs spécifiques. Les partitions sont gérées comme des tables distinctes mais restent sur le même serveur ou cluster.
+  - **Cas d’usage :** Optimisation des requêtes sur de grandes tables, comme une base de données de journaux ou d’archives, où les requêtes peuvent exclure certaines partitions non pertinentes.
+- **Sharding :** Le sharding distribue les données sur plusieurs nœuds. Chaque nœud gère un sous-ensemble des données (shards), souvent déterminé par une clé de hachage. PostgreSQL ne supporte pas nativement ce modèle distribué, mais des extensions comme **Citus** le rendent possible.
+  - **Cas d’usage :** Bases de données volumineuses nécessitant une scalabilité horizontale, comme un système de commerce électronique avec un nombre massif d'utilisateurs.
 
-Le Sharding étend le concept de partitionnement en distribuant les partitions sur plusieurs nœuds, chaque nœud gérant une partie du dataset. La gestion nécessite des outils supplémentaires ou des extensions comme Citus.
+#### **Partitionnement natif dans PostgreSQL**
 
-- Cas d’usage : Scalabilité horizontale pour les bases de données très volumineuses.
+Depuis la version 10, PostgreSQL propose un partitionnement natif qui a évolué pour inclure différents types de stratégies :
 
-**Partitionnement natif dans PostgreSQL :**
+- **Partitionnement par plage de valeurs (range partitioning) :** Les données sont divisées en intervalles, par exemple, par mois ou par année.
+- **Partitionnement par liste de valeurs (list partitioning) :** Les données sont attribuées à des partitions spécifiques en fonction de valeurs distinctes, comme des catégories.
+- **Partitionnement par hachage (hash partitioning) :** Introduit dans PostgreSQL 11, ce type de partitionnement distribue les données en fonction d’une fonction de hachage.
 
-PostgreSQL supporte nativement le partitionnement depuis la version 10. Les méthodes de partitionnement : Par plage de valeurs (range partitioning), par liste de valeurs (list partitioning), par hachage (hash partitioning, introduit dans PostgreSQL 11).
+Ces méthodes permettent de structurer les données de manière efficace pour réduire les temps de recherche et améliorer les performances des requêtes.
 
-- Avantages : les utilisateurs interagissent avec une table unique. Prise en charge d’index locaux pour optimiser les performances des partitions.
-- Limites : Conçu pour fonctionner sur un seul nœud (pas de distribution native sur plusieurs nœuds).
+- **Avantages :**
+  - Exclusion automatique des partitions non pertinentes dans les requêtes.
+  - Gestion simplifiée grâce à des commandes comme `CREATE TABLE ... PARTITION BY`.
+- **Limites :**
+  - Ne fonctionne que sur un seul nœud PostgreSQL. Les partitions ne sont pas distribuées sur plusieurs serveurs sans extensions tierces.
 
-**Sharding et extensions**
+#### **Sharding avec Citus**
 
-PostgreSQL ne fournit pas un support de sharding distribué natif, mais des extensions comme comblent cette lacune. Elles permettent de distribuer automatiquement les données en partitions sur plusieurs nœuds, transformant PostgreSQL en un système distribué massivement scalable.
+L'extension Citus transforme PostgreSQL en une base de données massivement distribuée. Elle automatise la répartition des données en shards sur plusieurs nœuds et gère les requêtes distribuées de manière transparente.
+
+- **Principe de fonctionnement :**
+  - Les données sont shardées selon une clé de distribution (souvent la clé primaire ou une colonne fréquemment filtrée).
+  - Un nœud coordinateur gère les métadonnées et répartit les requêtes SQL vers les nœuds travailleurs.
+- **Avantages :**
+  - Permet une scalabilité horizontale en ajoutant des nœuds au cluster.
+  - Offre un rééquilibrage dynamique des shards en cas de modification de la topologie du cluster.
 
 ## 3. Extensions et Forks
 #### 3.1 Citus
