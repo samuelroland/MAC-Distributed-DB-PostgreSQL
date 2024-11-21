@@ -9,7 +9,8 @@ PostgreSQL, en particulier, est un excellent exemple de cette évolution. Initia
 
 Dans ce rapport, nous allons explorer comment PostgreSQL a intégré ces mécanismes de distribution. Nous parleront des techniques de réplication et de sharding, mais aussi des outils qui permettent de gérer les pannes ou de rééquilibrer les données. On verra aussi en quoi PostgreSQL se positionne différemment des bases NoSQL et quels compromis il offre dans un environnement distribué.
 
-## 2. Vue d’ensemble des mécanismes de distribution dans PostgreSQL
+
+
 ## 2. Vue d’ensemble des mécanismes de distribution dans PostgreSQL
 
 PostgreSQL, en tant que SGBD relationnel évolutif, s’est adapté aux besoins modernes des systèmes distribués. Il propose des mécanismes natifs et extensibles pour gérer la réplication, le partitionnement, et le sharding. Ces fonctionnalités permettent de répondre à des problématiques telles que la haute disponibilité, la scalabilité, et la gestion des charges massives.
