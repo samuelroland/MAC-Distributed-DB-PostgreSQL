@@ -3,206 +3,210 @@
 **Auteurs :** Samuel Roland, Timothée Van Hove
 
 ## 1. Introduction
-Au cours des dernières années, les bases de données NoSQL ont explosé en popularité, en grande partie parce qu’elles répondent naturellement à ces problématiques de distribution. Des systèmes comme MongoDB, Cassandra ou DynamoDB ont été conçus pour gérer des environnements massivement distribués, souvent au détriment des fonctionnalités relationnelles traditionnelles. Cette popularité des NoSQL a poussé les systèmes relationnels, comme PostgreSQL ou MySQL, à évoluer pour ne pas être laissés sur la touche. Pour cela, de nouvelles fonctionnalités et extensions ont vu le jour, permettant à ces bases de données relationnelles de rester compétitives tout en intégrant des mécanismes de réplication, de sharding et de cohérence.
+Les bases de données relationnelles comme PostgreSQL ont longtemps dominé le paysage des SGBD, en fournissant des transactions ACID et des requêtes SQL complexes. Pourtant, à mesure que les applications modernes sont devenues plus globales et intensives en données, les limites d’un système sur une seule machine sont devenues évidentes. Que se passe-t-il lorsque cette machine atteint sa capacité maximale ? Que faire si elle tombe en panne ? Et comment gérer des millions d’utilisateurs répartis à travers le monde ?
 
-PostgreSQL, en particulier, est un excellent exemple de cette évolution. Initialement, c’est un système relationnel classique et conforme aux standards SQL. Mais grâce à un écosystème dynamique d’extensions et de forks comme Citus, Pgpool-II ou BDR, PostgreSQL peut aujourd’hui être utilisé comme une base distribuée capable de rivaliser avec certaines solutions NoSQL, tout en conservant ses points forts comme la gestion fine des transactions.
+Ces défis ont ouvert la voie à une explosion des BD NoSQL, conçues dès le départ pour être distribués, sacrifiant souvent la complexité relationnelle pour fournir une disponibilité et scalabilité accrue. Cependant, tout n’est pas une question de « NoSQL contre SQL ». Les bases de données relationnelles, comme PostgreSQL, ont relevé le défi en évoluant pour intégrer des mécanismes distribués tout en préservant leurs forces historiques.
 
-Dans ce rapport, nous allons explorer comment PostgreSQL a intégré ces mécanismes de distribution. Nous parleront des techniques de réplication et de sharding, mais aussi des outils qui permettent de gérer les pannes ou de rééquilibrer les données. On verra aussi en quoi PostgreSQL se positionne différemment des bases NoSQL et quels compromis il offre dans un environnement distribué.
-
-
+PostgreSQL s’est adapté à ces nouvelles exigences grâce à un ensemble d’extensions et de fonctionnalités. Avec des outils comme **Citus**, qui offre un sharding transparent, ou **BDR**, qui permet une réplication multi-leader, PostgreSQL peut rivaliser avec certaines des bases de données distribuées les plus performantes. Ces solutions ne sont pas magiques et impliquent des compromis, mais elles montrent à quel point PostgreSQL reste pertinent dans ce nouvel écosystème.
 
 ## 2. Vue d’ensemble des mécanismes de distribution dans PostgreSQL
 
-PostgreSQL, en tant que SGBD relationnel évolutif, s’est adapté aux besoins modernes des systèmes distribués. Il propose des mécanismes natifs et extensibles pour gérer la réplication, le partitionnement, et le sharding. Ces fonctionnalités permettent de répondre à des problématiques telles que la haute disponibilité, la scalabilité, et la gestion des charges massives.
+PostgreSQL est souvent reconnu pour sa stabilité et sa richesse fonctionnelle en tant que système relationnel. Cependant, à l’ère des applications massivement distribuées, il est devenu essentiel de dépasser les limites d’un seul serveur. PostgreSQL s’adapte à cette réalité grâce à une combinaison de mécanismes intégrés et d’extensions pour la réplication, le sharding, et le partitionnement. Ces outils répondent aux besoins de haute disponibilité, de tolérance aux pannes, et de scalabilité tout en maintenant les garanties transactionnelles typiques des bases relationnelles.
+
+Ce chapitre explore comment PostgreSQL met en œuvre la distribution des données, en commençant par la réplication. Nous examinerons les défis liés à la latence, les compromis entre cohérence forte et éventuelle, ainsi que les mécanismes qui permettent de tirer parti des répliques pour améliorer les performances.
 
 ### 2.1. Réplication
 
-La réplication dans PostgreSQL repose sur la transmission des journaux de modifications, appelés Write-Ahead Logs. Ces journaux assurent que les modifications apportées à la base de données sont enregistrées et propagées aux répliques. PostgreSQL prend en charge plusieurs modes de réplication pour répondre à différents cas d’usage.
+La réplication est au cœur de toute architecture distribuée. Dans PostgreSQL, elle repose sur la propagation des modifications enregistrées dans les Write-Ahead Logs ([WAL](https://www.postgresql.org/docs/current/wal-intro.html)) qui permet à PostgreSQL de synchroniser les répliques avec le leader de manière fiable, bien que les modes de réplication choisis influent sur les performances et la cohérence.
 
-#### **Réplication synchrone**
+PostgreSQL offre trois approches principales : la réplication synchrone, asynchrone et logique. Ces mécanismes ont chacun leurs avantages et limites, notamment en termes de latence, de tolérance aux pannes et de cohérence des données.
 
-La réplication synchrone garantit que toutes les répliques concernées (ou un sous-ensemble spécifié) reçoivent les modifications avant que la transaction ne soit validée sur le leader. Ce processus repose sur la gestion des journaux WAL.
+#### La réplication synchrone
 
-- **Mécanisme interne :** Les répliques synchrones signalent leur réception des données en renvoyant un accusé de réception (*acknowledgement*). Le leader attend ces confirmations avant de valider la transaction. Cette attente est configurée via le paramètre `synchronous_commit` dans `postgresql.conf`.
-- **Avantages :**
-  - Assure une cohérence forte (*strong consistency*) dans les données répliquées.
-  - Utile dans des environnements critiques où aucune perte de données n'est acceptable, comme les transactions bancaires.
-- **Limites :**
-  - Augmentation de la latence, notamment lorsque les répliques sont géographiquement distantes.
-  - Risque de goulots d’étranglement si une réplique synchrone est défaillante.
+Dans la [réplication synchrone](https://www.postgresql.org/docs/17/warm-standby.html#SYNCHRONOUS-REPLICATION), PostgreSQL garantit que toutes les répliques désignées reçoivent et confirment les modifications avant que la transaction ne soit validée. Ce processus repose sur un échange constant de messages entre le leader et les répliques, où chaque réplique doit envoyer un accusé de réception pour signaler qu’elle a bien appliqué les modifications. Ce niveau de coordination renforce la cohérence : une fois qu’une transaction est validée, toutes les répliques synchrones reflètent immédiatement son état.
 
-#### **Réplication asynchrone**
+Cependant, cette approche a un coût. Si une réplique est défaillante ou géographiquement distante, la latence introduite par le réseau peut ralentir considérablement les transactions. Imaginez un leader situé en Europe qui envoie des journaux à une réplique synchronisée en Asie. Même avec des connexions rapides, la latence réseau peut ajouter des dizaines de millisecondes à chaque transaction. Cette attente, bien que supportable pour des systèmes critiques comme ceux des banques, devient problématique dans des applications à haut débit ayant besoin d'une faible latence.
 
-Dans ce mode, les répliques reçoivent les journaux WAL après validation des transactions sur le leader. Ce mode est le plus utilisé pour améliorer la performance.
+#### La réplication asynchrone
 
-- **Mécanisme interne :** Les journaux WAL sont diffusés via le Streaming Replication. Les processus appelés **WAL sender** et **WAL receiver** gèrent respectivement l’envoi et la réception des journaux.
-- **Avantages :**
-  - Temps de réponse réduit pour les transactions.
-  - Les répliques peuvent être réparties sur de longues distances sans impact significatif sur la performance du leader.
-- **Limites :**
-  - Risque d’incohérences temporaires entre le leader et les répliques (*replication lag*).
-  - Non adapté aux cas nécessitant une cohérence stricte.
+La réplication asynchrone privilégie la performance. Contrairement au mode synchrone, le leader n’attend pas que les répliques confirment qu’elles ont reçu les modifications avant de valider une transaction. ça réduit considérablement la latence, surtout dans des environnements où les répliques sont réparties sur de grandes distances. Par exemple, un utilisateur en Europe peut valider une transaction presque instantanément, même si les répliques en Asie ou en Amérique n’ont pas encore été mises à jour.
 
-#### **Réplication logique**
+Par contre, cette vitesse s’accompagne d’un compromis : le replication lag. Ce décalage peut provoquer des incohérences temporaires, où une réplique asynchrone reflète un état obsolète de la BD. ça pose des problème dans des scénarios où un utilisateur souhaite lire immédiatement une donnée qu’il vient de mettre à jour, mais où la lecture est dirigée vers une réplique encore en retard (reading your own writes).
 
-La réplication logique permet une granularité et une flexibilité accrues. Contrairement à la réplication physique, qui copie directement les blocs de données, elle fonctionne au niveau des transactions et des lignes. Cela permet de répliquer uniquement une partie des données ou de transformer celles-ci pendant leur transfert.
+#### La réplication logique
 
-- **Mécanisme interne :** La réplication logique repose sur des slots de réplication, configurés via des commandes comme `CREATE PUBLICATION` et `CREATE SUBSCRIPTION`. Ces publications définissent quelles tables ou quelles lignes sont répliquées.
-- **Cas d’usage :**
-  - Migration inter-version de PostgreSQL.
-  - Intégration de bases de données hétérogènes.
-  - Synchronisation de bases de données spécifiques, par exemple, pour des environnements multi-tenants.
-- **Limites :**
-  - Plus complexe à configurer que la réplication physique.
-  - Performances légèrement inférieures à celles de la réplication physique.
+Pour des cas d’usage plus spécifiques, PostgreSQL propose la réplication logique. Contrairement à la réplication physique, qui copie les blocs de données, la réplication logique se concentre sur les modifications au niveau des lignes et des transactions. ça permet de répliquer uniquement certaines tables ou même un sous-ensemble des données, ce qui est utile pour des migrations de bases de données ou l’intégration avec des systèmes tiers.
 
-#### **Résumé des cas d’usage de la réplication dans PostgreSQL**
+Par exemple, une entreprise qui migre progressivement ses données vers une nouvelle version de PostgreSQL peut utiliser la réplication logique pour synchroniser les tables critiques tout en testant la nouvelle configuration. Dans des environnements multi-tenants, où chaque client dispose de sa propre base de données, la réplication logique permet de synchroniser uniquement les données d’un client spécifique, ce qui réduit la surcharge inutile.
 
-- **Scalabilité en lecture :** Les répliques asynchrones permettent de répartir les requêtes en lecture entre plusieurs nœuds.
-- **Haute disponibilité :** La réplication synchrone garantit une tolérance aux pannes en permettant un failover rapide vers une réplique cohérente.
-- **Migration et intégration :** La réplication logique facilite les migrations de versions et l’intégration de données dans des systèmes externes.
+#### Les défis de la réplication dans un système distribué
+
+La latence réseau est l’un des principaux facteurs limitants. PostgreSQL utilise un protocole interactif, où chaque commande doit attendre une réponse avant de passer à la suivante. ça signifie que les transactions avec des répliques distantes, surtout en mode synchrone, peuvent être ralenties par les allers-retours réseau. Même en mode asynchrone, un décalage entre le leader et ses répliques peut entraîner des incohérences qui affectent l’expérience utilisateur.
+
+Un autre défi est l’utilisation efficace des répliques pour la scalabilité en lecture. Les répliques peuvent gérer une partie des charges de lecture pour alléger le leader, mais leur décalage peut poser problème pour certaines applications. Par exemple, un shop en ligne pourrait afficher un panier vide à un utilisateur si la réplique interrogée n’a pas encore reçu la mise à jour récente. Ce problème peut être atténué en dirigeant certaines lectures critiques vers le leader ou en utilisant des sticky sessions.
+
+#### Configuration et mise en œuvre de la réplication
+
+Configurer la réplication dans PostgreSQL nécessite de définir les rôles des serveurs (leader ou réplique) et d’ajuster certains paramètres clés.
+
+**1. Préparation du leader :**
+
+[Le serveur principal](https://www.postgresql.org/docs/current/runtime-config-replication.html#RUNTIME-CONFIG-REPLICATION-PRIMARY) (leader) doit être configuré pour activer la réplication. Cela inclut les étapes suivantes :
+
+- **Activer le niveau de WAL approprié :** Modifier le paramètre `wal_level` dans `postgresql.conf` et le définir sur `replica` ou `logical` selon le type de réplication souhaité.
+- **Configurer le nombre de connexions de répliques :** Le paramètre `max_wal_senders` détermine le nombre maximum de connexions simultanées pour les processus envoyant les journaux WAL. Par défaut, il est fixé à 10.
+- **Activer les slots de réplication :** Pour éviter que des journaux nécessaires aux répliques ne soient supprimés, configurer `max_replication_slots` avec un nombre suffisant pour les répliques prévues.
+
+**2. Configuration des répliques :**
+
+Les [serveurs standby,](https://www.postgresql.org/docs/current/runtime-config-replication.html#RUNTIME-CONFIG-REPLICATION-STANDBY) qu’ils soient pour une réplication synchrone ou asynchrone, nécessitent :
+
+- **Définir `primary_conninfo` :** Fournir les informations de connexion au leader, y compris l’adresse IP ou le nom d’hôte, le port, et les informations d’authentification.
+- **Utiliser les slots de réplication :** Associer une réplique à un slot pour garantir la continuité de la réplication, même en cas de déconnexion temporaire.
+
+**3. Paramètres pour la réplication synchrone :**
+
+Pour activer la réplication synchrone, configurez :
+
+- `synchronous_standby_names` sur le leader pour spécifier les répliques synchrones. Vous pouvez utiliser des mots-clés comme `FIRST` ou `ANY` pour prioriser ou définir un quorum de répliques.
+
+**4. Détection des pannes et délai de reprise :**
+
+Les paramètres tels que `wal_sender_timeout` et `wal_receiver_timeout` permettent de gérer les déconnexions inattendues entre le leader et les répliques. Par exemple, en cas de panne réseau, ces paramètres déterminent combien de temps attendre avant de marquer une connexion comme perdue.
+
+**5. Surveillance de la réplication :**
+
+Des vues comme `pg_stat_replication` permettent de surveiller en temps réel l’état des connexions de réplication, y compris la position du WAL appliquée sur chaque réplique. Ces informations sont cruciales pour diagnostiquer des problèmes de décalage ou de performances.
 
 ### 2.2. Partitionnement et sharding
 
-PostgreSQL offre des fonctionnalités de partitionnement. Bien qu’il ne prenne pas en charge nativement le sharding distribué, des extensions comme **Citus** comblent ce manque.
+Ces deux techniques sont utilisées pour diviser les données en ensembles plus petits et mieux gérables. Elles permettent d'améliorer les performances et permettre une meilleure scalabilité. Elles s'appliquent à des contextes différents mais ne s'excluent pas mutuellement. PGSQL offre un support natif pour le partitionnement, alors que le sharding distribué repose sur des extensions comme **Citus**.
 
-#### **Différence entre partitionnement logique et sharding**
+#### Partitionnement natif dans PostgreSQL 
 
-- **Partitionnement logique :** PostgreSQL divise une table en sous-tables (partitions) selon des critères définis, comme une plage de dates ou des valeurs spécifiques. Les partitions sont gérées comme des tables distinctes mais restent sur le même serveur ou cluster.
-  - **Cas d’usage :** Optimisation des requêtes sur de grandes tables, comme une base de données de journaux ou d’archives, où les requêtes peuvent exclure certaines partitions non pertinentes.
-- **Sharding :** Le sharding distribue les données sur plusieurs nœuds. Chaque nœud gère un sous-ensemble des données (shards), souvent déterminé par une clé de hachage. PostgreSQL ne supporte pas nativement ce modèle distribué, mais des extensions comme **Citus** le rendent possible.
-  - **Cas d’usage :** Bases de données volumineuses nécessitant une scalabilité horizontale, comme un système de commerce électronique avec un nombre massif d'utilisateurs.
+Depuis la version 10, PGSQL propose un [partitionnement](https://www.postgresql.org/docs/17/ddl-partitioning.html) natif qui divise une table en sous-tables ou "partitions" selon des critères déclarés au moment de la création de la table. Cela permet d’organiser les données et d'améliorer les performances des requêtes en travaillant sur des ensembles de données plus petits.
 
-#### **Partitionnement natif dans PostgreSQL**
+Par exemple, pour une table contenant des données de séries temporelles comme des logs , le partitionnement par plages (range partitioning) permet de diviser les données par mois ou année. Quand une requête cible une période donnée, PGSQL ignore automatiquement les partitions non pertinentes grâce à son mécanisme d’exclusion de partitions. ça réduit le temps de traitement et améliore la performance.
 
-Depuis la version 10, PostgreSQL propose un partitionnement natif qui a évolué pour inclure différents types de stratégies :
+PostgreSQL supporte trois types principaux de partitionnement:
 
-- **Partitionnement par plage de valeurs (range partitioning) :** Les données sont divisées en intervalles, par exemple, par mois ou par année.
-- **Partitionnement par liste de valeurs (list partitioning) :** Les données sont attribuées à des partitions spécifiques en fonction de valeurs distinctes, comme des catégories.
-- **Partitionnement par hachage (hash partitioning) :** Introduit dans PostgreSQL 11, ce type de partitionnement distribue les données en fonction d’une fonction de hachage.
+- **Partitionnement par plages (range partitioning)** : Idéal pour les données temporelles ou séquentielles. Exemple : partitionner une table de transactions par mois.
+- **Partitionnement par liste (list partitioning)** : Utile pour organiser les données en catégories distinctes comme des régions ou des types d’événements.
+- **Partitionnement par hachage (hash partitioning)** : Répartit les données uniformément pour éviter les déséquilibres dans les volumes des partitions.
 
-Ces méthodes permettent de structurer les données de manière efficace pour réduire les temps de recherche et améliorer les performances des requêtes.
+Les avantages du partitionnement sont multiples :
 
-- **Avantages :**
-  - Exclusion automatique des partitions non pertinentes dans les requêtes.
-  - Gestion simplifiée grâce à des commandes comme `CREATE TABLE ... PARTITION BY`.
-- **Limites :**
-  - Ne fonctionne que sur un seul nœud PostgreSQL. Les partitions ne sont pas distribuées sur plusieurs serveurs sans extensions tierces.
+1. **Amélioration des performances des requêtes** : Les partitions pertinentes sont ciblées, limitant les recherches inutiles.
+2. **Suppression efficace des anciennes données** : Les partitions obsolètes peuvent être supprimées rapidement avec `DROP TABLE`, évitant les problèmes de fragmentation.
+3. **Gestion optimisée de l’autovacuum** : Chaque partition peut être analysée indépendamment, ce qui réduit les blocages sur des tables volumineuses.
 
-#### **Sharding avec Citus**
+Cependant, le partitionnement natif reste limité à un nœud unique. Si les données ou la charge augmentent au-delà des capacités d’un serveur, cette approche ne suffit plus.
 
-L'extension Citus transforme PostgreSQL en une base de données massivement distribuée. Elle automatise la répartition des données en shards sur plusieurs nœuds et gère les requêtes distribuées de manière transparente.
+#### Sharding distribué avec [Citus](https://docs.citusdata.com/en/stable/admin_guide/cluster_management.html#postgresql-extensions) : Scalabilité horizontale pour PostgreSQL
 
-- **Principe de fonctionnement :**
-  - Les données sont shardées selon une clé de distribution (souvent la clé primaire ou une colonne fréquemment filtrée).
-  - Un nœud coordinateur gère les métadonnées et répartit les requêtes SQL vers les nœuds travailleurs.
-- **Avantages :**
-  - Permet une scalabilité horizontale en ajoutant des nœuds au cluster.
-  - Offre un rééquilibrage dynamique des shards en cas de modification de la topologie du cluster.
+Lorsque les limites d’un seul serveur sont atteintes, le [sharding](https://docs.citusdata.com/en/stable/get_started/concepts.html#sharding-models) devient une solution incontournable. Contrairement au partitionnement, qui divise les données sur un nœud unique, le sharding distribue les données entre plusieurs nœuds d’un cluster. Cela permet une scalabilité horizontale où chaque nœud gère un sous-ensemble des données, appelé "[shard](https://docs.citusdata.com/en/stable/get_started/concepts.html#shards)". PGSQL n’implémente pas nativement le sharding, mais des extensions comme Citus transforment PGSQL en une base de données massivement distribuée.
 
-## 3. Extensions et Forks
-#### 3.1 Citus
+**Comment fonctionne Citus ?**
+Avec Citus, les données sont shardées selon une clé de distribution, souvent une colonne comme `user_id` dans une application [multi-tenant](https://docs.citusdata.com/en/stable/sharding/data_modeling.html#multi-tenant-apps). Chaque shard est stocké sur un nœud différent, et un nœud coordinateur gère les métadonnées et distribue les requêtes. Par exemple :
 
-Citus est une extension open-source pour PostgreSQL qui transforme une instance PostgreSQL en un système distribué capable de gérer des charges de données massives en répartissant les données sur plusieurs nœuds (shards).
+- Si une requête concerne un seul utilisateur (par exemple `user_id=123`), elle est routée vers un seul nœud, minimisant les échanges réseau.
+- Pour des requêtes plus complexes nécessitant plusieurs shards, Citus parallélise les opérations entre les nœuds, permettant un traitement rapide même sur de gros volumes de données.
 
-Les données sont réparties horizontalement en "shards" sur plusieurs nœuds du cluster. Un nœud maître (coordinator) gère les métadonnées et dirige les requêtes vers les nœuds de données (workers). Les requêtes SQL sont automatiquement transformées en requêtes parallèles sur les nœuds de données.
+Un avantage clé de Citus est que chaque shard est une table PGSQL normale. Cela veut dire qu'on peut utiliser des index locaux, des contraintes, et d’autres optimisations traditionnelles. De plus, les groupes de shards (shard groups) permettent de regrouper les données fréquemment utilisées ensemble (comme des tables avec des relations fortes), ce qui réduit les opérations entre les nœuds.
 
-**Sharding basé sur une clé de distribution :**Chaque table est partitionnée en shards selon une clé spécifique (souvent une clé primaire ou une colonne fréquemment utilisée dans les filtres). Les shards sont distribués entre les nœuds du cluster.
+#### Partitionnement et sharding : Une combinaison puissante
 
-**Avantages pour le sharding horizontal :**
+Partitionnement et sharding ne s’excluent pas, mais peuvent être combinés. Par exemple, dans une application de séries temporelles :
 
-- Scalabilité horizontale : Ajout de nouveaux nœuds pour gérer des volumes de données croissants ou des charges plus importantes.
-- Performance accrue : Les requêtes sont distribuées et exécutées en parallèle sur les nœuds.
-- Simplification des opérations : Les requêtes SQL standards sont prises en charge sans que l'utilisateur ait besoin de connaître les détails de la distribution des données.
-- Rééquilibrage dynamique : Redistribution des shards lors de l'ajout ou de la suppression de nœuds pour assurer une charge équilibrée.
+- Les données peuvent être partitionnées par plages temporelles (par mois ou trimestre) pour simplifier la gestion des anciennes données et améliorer les performances des requêtes.
+- Chaque partition peut ensuite être shardée et distribuée sur plusieurs nœuds grâce à Citus, permettant une scalabilité horizontale pour des charges de travail massives.
 
+#### Considérations
 
-#### 3.2 Pgpool-II
+Ces techniques nécessitent des choix, notamment pour la clé de distribution dans le sharding. Une mauvaise clé peut entraîner des bottlenecks, car les requêtes devront souvent interroger plusieurs shards. 
 
-Pgpool-II est un middleware open-source conçu pour s'interfacer avec PostgreSQL. Il offre diverses fonctionnalités pour améliorer les performances et la résilience des bases de données.
+En plus de ça, le modèle de données doit être fait en prenant en compte des limitations :
 
-- Réplication native : Permet de configurer une réplication maître-follower pour assurer la haute disponibilité des données.
-- Réplication parallèle : Permet de diviser une requête en sous-requêtes pour les exécuter sur plusieurs nœuds, améliorant ainsi les performances.
+- Les relations entre les données doivent idéalement inclure la clé de distribution pour éviter les jointures entre les nœuds.
+- Les requêtes lourdes peuvent nécessiter des optimisations pour être parallélisées efficacement.
 
-Équilibrage de charge : Pgpool-II répartit les requêtes en lecture sur les nœuds followers pour améliorer la scalabilité en lecture. Il maintient un suivi des transactions pour éviter les incohérences dues au décalage de réplication asynchrone.
+## 3. Gestion des pannes et rééquilibrage
 
-Autres fonctionnalités : Utilise un pooling de connexions pour réduire la surcharge de gestion des connexions sur PostgreSQL. En cas de panne d’un nœud, Pgpool-II redirige automatiquement les requêtes vers un nœud disponible.
+Les systèmes distribués sont puissants, mais comme tout ce qui est complexe, ils ne sont pas sans leurs défis. Pannes, déséquilibres, nœuds surchargés : PGSQL, avec ses extensions comme Citus ou [Patroni](https://patroni.readthedocs.io/en/latest/), a des solutions solides pour garder tout ça sous contrôle.
 
-**Limites :**
+### 3.1. Détection et récupération des pannes
 
-- La configuration de Pgpool-II peut être difficile, surtout dans des environnements avec de nombreux nœuds.
-- Étant une couche intermédiaire, Pgpool-II peut introduire une latence supplémentaire pour certaines requêtes.
-- En cas de réplication asynchrone, les requêtes réparties sur plusieurs nœuds peuvent renvoyer des données obsolètes.
+Quand un nœud tombe, la première étape est de s’en rendre compte. PostgreSQL ne propose pas directement de mécanisme pour détecter une panne, mais les outils comme Patroni ou [Pgpool-II](https://www.pgpool.net/docs/latest/en/html/intro-whatis.html) utilisent des heartbeats pour vérifier que tout le monde est en ligne. Si un nœud reste silencieux trop longtemps, il est marqué comme défaillant, et le processus de récupération commence.
 
+#### Répliques en panne
 
-#### 3.3 BDR (Bi-Directional Replication)
+Quand une [réplique plante](https://docs.citusdata.com/en/stable/admin_guide/cluster_management.html#worker-node-failures), PGSQL peut la remettre sur pied grâce à ses journaux [WAL](https://www.postgresql.org/docs/current/wal-intro.html) (*Write-Ahead Logs*). Ces journaux enregistrent toutes les modifications effectuées sur le leader. Lorsqu’une réplique revient à la vie, elle consulte son journal local pour voir où elle s’est arrêtée et demande au leader de lui envoyer les transactions manquantes (catch-up recovery). Ce processus est rapide et garantit que tout reste en ordre.
 
-BDR est une extension avancée pour PostgreSQL qui implémente la réplication multi-leader. Contrairement à la réplication classique à leader unique, elle permet à plusieurs nœuds de jouer le rôle de leader et d’accepter des écritures.
+#### Le leader en panne
 
-**Réplication multi-leader :**Tous les nœuds dans le cluster peuvent recevoir des écritures. Les modifications effectuées sur un nœud sont propagées aux autres nœuds via la réplication logique.
+[La panne d’un leader](https://docs.citusdata.com/en/stable/admin_guide/cluster_management.html#coordinator-node-failures) est une toute autre histoire. Ici, on doit déclencher un failover : promouvoir une réplique en tant que nouveau leader. Patroni surveille les nœuds via un système comme [Etcd](https://github.com/etcd-io/etcd) ou [ZooKeeper](https://zookeeper.apache.org/) et décide, en cas de besoin, qui prendra le relais. Une fois le failover terminé, il faut s’assurer que l’ancien leader ne revienne pas comme si de rien n’était : un mécanisme appelé [STONITH](https://en.wikipedia.org/wiki/STONITH) (*Shoot The Other Node In The Head*) veille à ce qu’un nœud défaillant ne cause pas de confusion.
 
-**Gestion des conflits :** Les conflits d'écriture sont détectés et résolus automatiquement en fonction de politiques définies (ex. dernier écrit gagne, résolution basée sur les colonnes).
+Si notre ancien leader revient en ligne après un failover, il faut utiliser `pg_rewind` pour le resynchroniser rapidement avec le nouveau leader. C’est plus rapide que de reconstruire une réplique à partir de zéro.
 
-**Garanties offertes :**
+### 3.2. Ajouter ou retirer une réplique
 
-- Haute disponibilité : Pas de dépendance à un nœud leader unique.
-- Cohérence éventuelle : Une fois propagées, les modifications convergent vers un état cohérent.
-- Résilience : Si un nœud devient inaccessible, les autres continuent de fonctionner sans interruption.
+Ajouter une nouvelle réplique dans PostgreSQL, c’est un peu comme mettre quelqu’un à jour avec ce qui s’est passé pendant qu’il était absent. Tout commence par une image cohérente de la base de données, prise sur le leader. Cette image est transférée à la nouvelle réplique, qui rattrape ensuite son retard en lisant les journaux WAL. L’opération se déroule sans interruption pour les utilisateurs.
 
-**Limites :**
+Le retrait d’une réplique est un peu plus compliqué. PostgreSQL ne redistribue pas automatiquement les données d’un nœud supprimé ; il faut des outils comme Citus pour gérer ça efficacement. Avec Citus, les partitions (ou shards) gérées par la réplique retirée sont transférées vers d’autres nœuds. Citus s’appuie sur une stratégie de shards fixes, ce qui signifie que seules les partitions nécessaires sont déplacées, limitant les perturbations.
 
-- Complexité : La gestion des conflits et le maintien de la cohérence entre les nœuds augmentent la complexité.
-- Latence : Les mises à jour doivent être propagées à plusieurs nœuds, ce qui peut augmenter le délai de réplication.
+Pour éviter les conflits pendant le retrait d’un shard, Citus introduit les shards orphelins. En gros, le shard n’est pas supprimé immédiatement après son déplacement : il est marqué pour suppression différée, le temps que toutes les requêtes en cours soient terminées. Pas de précipitation, pas de problèmes.
 
-## 4. Gestion des pannes et rééquilibrage
+### 3.3. Rééquilibrage des données
 
-### Détection et récupération des pannes
+Ajouter ou retirer un nœud change l’équilibre du cluster. Le [rééquilibrage](https://docs.citusdata.com/en/stable/admin_guide/cluster_management.html#rebalance-shards-without-downtime) consiste à redistribuer les données pour que tout reste fluide. Avec Citus, c’est presque magique.
 
-Dans PostgreSQL, la détection des pannes repose sur des mécanismes simples mais efficaces, comme les *heartbeats* : des messages échangés régulièrement entre les nœuds pour vérifier qu’ils sont en ligne. Par exemple, si une réplique ne répond pas pendant un certain temps défini (un *timeout*), elle est marquée comme "non disponible". Ces heartbeats sont souvent gérés via des extensions ou des outils externes, comme **Pgpool-II** ou **Patroni**, qui surveillent activement les connexions entre les nœuds.
+Quand un nouveau nœud rejoint le cluster, Citus détermine quels shards doivent être déplacés. Le transfert est orchestré de manière transparente, et on peut suivre la progression avec la fonction `get_rebalance_progress`. Elle affiche la taille des shards sur les nœuds source et cible, et estime le pourcentage de transfert terminé. Une requête rapide nous donne une vue d’ensemble :
 
-Lorsqu’un follower tombe en panne, PostgreSQL utilise son système de journalisation **Write-Ahead Logging (WAL)** pour le remettre à jour. Chaque transaction effectuée sur le leader est d'abord écrite dans le WAL avant d’être appliquée. Si le follower revient en ligne après une panne, il consulte son journal local pour déterminer où il s’est arrêté (la position dans le WAL, appelée *log sequence number* ou LSN). Ensuite, il demande au leader toutes les transactions manquantes depuis ce point. Ce processus s’appelle le *catch-up recovery* et garantit que la réplique se synchronise sans perdre d’informations, tout en évitant de redémarrer tout le cluster.
+```sql
+SELECT
+    table_name,
+    shardid,
+    pg_size_pretty(source_shard_size) AS source_size,
+    pg_size_pretty(target_shard_size) AS target_size,
+    CASE WHEN shard_size = 0
+        THEN 100
+        ELSE LEAST(round(target_shard_size::numeric / shard_size * 100, 2), 100)
+    END AS percent_completed_estimate
+FROM get_rebalance_progress()
+WHERE progress = 1;
+```
 
-La gestion de la panne d’un leader est plus complexe. Ici, un *failover* doit être initié pour promouvoir une réplique en tant que nouveau leader. Patroni, par exemple, utilise un service de coordination comme *Etcd* ou *ZooKeeper* pour surveiller l’état des nœuds et organiser un consensus sur quel nœud doit devenir le nouveau leader. Ce consensus est nécessaire pour éviter qu’un ancien leader, qui reviendrait en ligne, ne cause des conflits en agissant comme s’il était encore en charge. Une fois le failover terminé, Patroni s’assure que l’ancien leader est rétrogradé en follower, ce qui évite les désynchronisations.
+### 3.4. Tests réguliers pour une résilience accrue
 
-### Ajout et retrait de partitions ou répliques
+Un cluster n’est résilient que si ses mécanismes de récupération fonctionnent. Pour éviter les mauvaises surprises, il est crucial de tester régulièrement :
 
-Lorsqu'on ajoute une réplique à PostgreSQL, le processus commence par un **snapshot cohérent** des données du leader. Ce snapshot est une image figée de la base de données à un moment précis, souvent copiée sur le disque. Ensuite, la nouvelle réplique commence à rattraper les transactions survenues après ce snapshot en lisant les journaux WAL du leader. Cela permet d’intégrer la réplique au cluster sans interrompre les opérations en cours. Si on utilise la réplication synchrone, cette réplique peut immédiatement participer au maintien de la cohérence des données.
+- Les basculements (switchover) pour s’assurer qu’un autre nœud peut facilement prendre le rôle de leader.
+- Les simulations de pannes pour vérifier la réactivité des outils comme Patroni.
+- Le rééquilibrage automatique pour voir si les données sont bien redistribuées en cas de changement.
 
-Retirer une réplique, c’est un peu plus délicat. PostgreSQL ne redirige pas automatiquement les données gérées par la réplique retirée : cette opération est souvent manuelle ou gérée via des extensions comme **Citus**. Avec Citus, les partitions qui étaient sur le nœud retiré sont redistribuées dynamiquement sur les autres nœuds du cluster. C’est possible grâce à une stratégie de *partitions fixes*, où chaque partition est associée à une plage spécifique de données. Ainsi, seule l’affectation des partitions entre les nœuds change, tandis que la structure de la base de données reste intacte. Cela minimise les mouvements de données inutiles.
-
-Pour éviter les pertes de données, PostgreSQL utilise des mécanismes de sauvegarde intégrée et des copies incrémentielles basées sur le WAL. Ainsi, même si une réplique est retirée brusquement, les données peuvent être reconstruites à partir des autres répliques ou directement du leader.
-
-### Mécanismes de rééquilibrage automatique
-
-Le rééquilibrage dans PostgreSQL, en particulier avec **Citus**, est un processus pensé pour minimiser les perturbations. Lorsqu’un nouveau nœud est ajouté, les partitions existantes sont redistribuées pour équilibrer la charge. Citus suit une approche basée sur une fonction de hachage pour assigner chaque clé de données à une partition. Ces partitions sont ensuite réparties sur les nœuds disponibles. Si un nouveau nœud rejoint le cluster, Citus transfère seulement les partitions nécessaires, au lieu de tout réorganiser. Cela évite les mouvements de données inutiles et garantit que le cluster reste opérationnel tout au long du processus.
-
-Une autre approche consiste à éviter la méthode **hash mod N**, qui redistribuerait toutes les données en cas de changement du nombre de nœuds. Citus préfère des partitions fixes, attribuées de manière pseudo-aléatoire, ce qui rend le rééquilibrage plus simple et plus efficace.
-
-Pour les requêtes, des outils comme **Pgpool-II** surveillent en permanence la charge de chaque nœud et redirigent dynamiquement les requêtes vers ceux qui sont moins sollicités. Par exemple, si un nœud reçoit une surcharge de lectures, Pgpool-II peut envoyer les requêtes vers d’autres répliques disponibles. Ce routage intelligent assure que le cluster reste performant, même en cas de variations importantes dans les charges de travail.
-
-Si un nœud tombe en panne, PostgreSQL et ses extensions gèrent automatiquement la redistribution des partitions ou la reconfiguration des connexions. Les partitions du nœud défaillant sont temporairement servies par d’autres nœuds jusqu’à ce que le problème soit résolu. Patroni et Pgpool-II jouent ici un rôle clé, en combinant des mécanismes de surveillance active et de failover automatique pour garantir que le système reste disponible et performant.
+Avec PGSQL et ses extensions, gérer les pannes et équilibrer les données est loin d’être insurmontable. Le système est conçu pour absorber les chocs tout en restant opérationnel, et les outils disponibles rendent le tout presque agréable à gérer.
 
 
 
-## 5. Cohérence et modèles de consistance
+## 4. Cohérence et modèles de consistance
 
-Dans PostgreSQL, la cohérence repose sur les mécanismes de réplication et les modèles de consistance adoptés. Ces choix dépendent de la configuration du cluster et des besoins spécifiques des applications.
+Quand on parle de cohérence dans PGSQL, on entre dans un monde de choix subtils et d’équilibres délicats. La manière dont on configure notre système de réplication et nos modèles de consistance dépend fortement de nos besoins : cohérence absolue, performances maximales, ou quelque chose entre les deux.
 
 ### Cohérence forte et mise en œuvre
 
-La cohérence forte est principalement atteinte grâce à la **réplication synchrone**, qui garantit que toutes les répliques d’un cluster sont à jour avant que la transaction ne soit validée. Lorsqu’une écriture est effectuée sur le leader, celui-ci transmet les modifications aux répliques synchrones. Chaque réplique doit confirmer qu’elle a appliqué ces modifications avant que le leader n’informe le client que la transaction est terminée.
+La cohérence forte est le saint Graal des systèmes transactionnels. Dans PostgreSQL, ça s’obtient principalement avec la réplication synchrone. A chaque fois qu’une écriture est faite sur le leader, ce dernier envoie les modifications aux répliques synchrones. Ces répliques doivent confirmer qu’elles ont bien appliqué les changements avant que le leader ne valide la transaction. ça signifie que, lorsque le client reçoit une confirmation, toutes les copies des données sont alignées.
 
-PostgreSQL gère cela à travers son système de **Write-Ahead Logging (WAL)**. Le WAL journalise toutes les modifications apportées à la base de données. Lors de la réplication synchrone, le leader envoie ces journaux aux répliques, qui les appliquent à leurs propres copies des données. Si une réplique ne répond pas ou est temporairement inaccessible, le leader suspend les validations de nouvelles transactions, maintenant ainsi la cohérence forte mais au prix d’une disponibilité réduite. Cette approche convient aux applications où les erreurs ou les écarts de données sont inacceptables, comme dans les systèmes bancaires ou les registres critiques.
+ça fonctionne grâce au **Write-Ahead Logging (WAL)**, qui journalise chaque modification. Cependant, si une réplique tombe en panne ou devient inaccessible, le leader peut bloquer les nouvelles transactions pour maintenir cette cohérence stricte. ça peut être un frein pour la disponibilité, mais pour des cas critiques comme les banques ou les applications médicales, c’est un prix à payer acceptable.
 
-La configuration dans PostgreSQL se fait principalement à travers le fichier `postgresql.conf`, où des paramètres comme `synchronous_commit` sont définis. Les administrateurs peuvent également spécifier quelles répliques doivent être synchrones via `synchronous_standby_names`. Cette granularité offre un contrôle précis sur les niveaux de cohérence et de performance.
+On configure ça via des paramètres comme `synchronous_commit` et `synchronous_standby_names` dans le fichier `postgresql.conf`. ça nous permet même de choisir les répliques qui doivent être synchrones, offrant une certaine flexibilité.
 
 ### Cohérence éventuelle et tolérance au retard
 
-La cohérence éventuelle est réalisée grâce à la **réplication asynchrone**. Ici, le leader n’attend pas que les répliques confirment qu’elles ont appliqué les modifications avant de valider la transaction. Les journaux WAL sont transmis aux répliques selon leur disponibilité, ce qui introduit un léger retard. Pendant ce délai, une requête de lecture sur une réplique pourrait retourner une version obsolète des données.
+La cohérence éventuelle est réalisée grâce à la réplication asynchrone. Ici, le leader n’attend pas que les répliques confirment qu’elles ont appliqué les modifications avant de valider la transaction. Les journaux WAL sont transmis aux répliques selon leur disponibilité, ce qui introduit un léger retard. Pendant ce délai, une requête de lecture sur une réplique pourrait retourner une version obsolète des données.
 
-PostgreSQL configure cette approche en assignant des répliques comme asynchrones par défaut. Ces répliques utilisent des processus appelés **WAL receivers**, qui se connectent au leader pour récupérer les journaux WAL. Ces journaux sont stockés et appliqués localement par les répliques pour maintenir une version cohérente des données à terme.
+PGSQL configure cette approche en assignant des répliques comme asynchrones par défaut. Ces répliques utilisent des processus appelés **WAL receivers**, qui se connectent au leader pour récupérer les journaux WAL. Ces journaux sont stockés et appliqués localement par les répliques pour maintenir une version cohérente des données à terme.
 
-L’asynchronisme est souvent combiné avec des mécanismes comme le *Streaming Replication*, où les répliques reçoivent un flux continu des journaux WAL. Bien que cela améliore les délais de propagation, il ne garantit pas une cohérence immédiate. PostgreSQL intègre également des outils comme `pg_stat_replication` pour surveiller le décalage entre le leader et ses répliques, permettant d’identifier et de corriger rapidement les retards excessifs.
+L’asynchronisme est souvent combiné avec des mécanismes comme le Streaming Replication, où les répliques reçoivent un flux continu des journaux WAL. Bien que ça améliore les délais de propagation, il ne garantit pas une cohérence immédiate. PGSQL intègre également des outils comme `pg_stat_replication` pour surveiller le décalage entre le leader et ses répliques, permettant d’identifier et de corriger rapidement les trop grands retards.
 
 ### Résolution des incohérences : cohérence lecture-écriture et lectures monotones
 
@@ -214,19 +218,37 @@ Les lectures monotones, quant à elles, garantissent qu’un utilisateur ne verr
 
 ### Compromis dans PostgreSQL
 
-Les modèles de consistance dans PostgreSQL illustrent les compromis entre cohérence, disponibilité et performance. Si un système exige une cohérence stricte, les performances peuvent en souffrir en raison de la nécessité d’attendre les confirmations des répliques synchrones. À l’inverse, une configuration axée sur la disponibilité peut entraîner des retards dans la propagation des modifications, créant des incohérences temporaires.
+PGSQL permet de jouer sur plusieurs paramètres pour ajuster la cohérence à nos besoins. On peut opter pour une **consistance** lecture-écriture stricte en utilisant des transactions serialisables ou en verrouillant explicitement certaines données via `SELECT FOR UPDATE`. Mais attention : ces mécanismes augmentent la charge et réduisent la concurrence.
 
-PostgreSQL permet de personnaliser ces compromis en jouant sur des paramètres comme le niveau de synchronisation (`synchronous_commit`) et les priorités des répliques. Ces options offrent aux administrateurs la flexibilité nécessaire pour répondre aux exigences spécifiques des applications, qu’il s’agisse de bases de données transactionnelles ou analytiques.
+Pour les applications analytiques ou massivement parallèles, une approche moins stricte, combinée avec des vérifications explicites au niveau applicatif, peut suffire. Le tout est de trouver le bon équilibre entre cohérence, performance, et disponibilité.
 
-### Extensions pour gérer la cohérence
+### Citus et les modèles de réplication
 
-Les extensions comme **Citus** apportent une couche supplémentaire de contrôle sur les modèles de cohérence dans un environnement massivement distribué. Elles permettent de définir des niveaux de réplication et de cohérence pour chaque shard de données, offrant ainsi une flexibilité granulaire. De plus, des outils comme **Patroni** peuvent automatiser la gestion des rôles de nœuds et garantir une cohérence même en cas de failover, minimisant les risques d’incohérences.
+Citus  permet de choisir entre deux modèles de réplication :
 
+1. **Rélication par déclarations (statement-based)** : Cette méthode est simple et efficace pour des cas où les données sont append-only, comme des journaux ou des séries temporelles.
+2. **Rélication en streaming** : Elle utilise les fonctionnalités natives de PostgreSQL pour garantir que toutes les répliques d’un shard sont parfaitement alignées. C’est particulièrement utile pour des applications [multi-tenants](https://docs.citusdata.com/en/stable/sharding/data_modeling.html#multi-tenant-apps) où les contraintes transactionnelles sont importantes.
 
+Citus aide aussi à gérer des cas complexes, comme la colocation des données pour améliorer les performances des jointures dans un système distribué.
+
+### Quand la cohérence rencontre la concurrence : MVCC et isolation
+
+Le modèle [MVCC](https://wiki.postgresql.org/wiki/MVCC) de PGSQL garantit que les lectures et les écritures ne se bloquent pas mutuellement, même sous des niveaux d’isolation élevés comme `Serializable`. Ce modèle offre une cohérence instantanée à chaque transaction, tout en minimisant les verrous. Cependant, pour des besoins très stricts, on peut utiliser des transactions [serialisables](https://www.postgresql.org/docs/current/transaction-iso.html#XACT-SERIALIZABLE) ou des [verrous explicites](https://www.postgresql.org/docs/current/explicit-locking.html) pour éviter les anomalies.
 
 ## 7. Conclusion et perspectives
 - Résumé des forces et limites de PostgreSQL dans la distribution.
 - Futur des bases de données distribuées avec PostgreSQL.
 
+
+
 ## Références
 
+1. Shard Rebalancing in Citus 10.1. [Citus Data Blog](https://www.citusdata.com/blog/2021/09/03/shard-rebalancing-in-citus-10-1)
+2. Citus' Replication Model: Today and Tomorrow [Citus Data Blog](https://www.citusdata.com/blog/2016/12/15/citus-replication-model-today-and-tomorrow/)
+3. Cluster Management [Citus documentation](https://docs.citusdata.com/en/stable/admin_guide/cluster_management.html)
+4. Failover. [PG documentation](https://www.postgresql.org/docs/17/warm-standby-failover.html)
+5. Replication. [PG documentation](https://www.postgresql.org/docs/current/runtime-config-replication.html)
+6. Concurrency Control [PG documentation](https://www.postgresql.org/docs/current/mvcc.html)
+7. Understanding partitioning and sharding in Postgres and Citus. [Azure Database for PostgreSQL Blog](https://techcommunity.microsoft.com/blog/adforpostgresql/understanding-partitioning-and-sharding-in-postgres-and-citus/3891629)
+8. An Overview of Distributed  PostgreSQL Architectures. [Crunchydata Blog](https://www.crunchydata.com/blog/an-overview-of-distributed-postgresql-architectures)
+9. How PostreSQL replication works. [Medium Blog](https://medium.com/moveax/how-postgresql-replication-works-6288b3e6000e)
