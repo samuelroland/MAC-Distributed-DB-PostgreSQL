@@ -17,13 +17,13 @@ Ce chapitre explore comment PGSQL met en œuvre la distribution des données, en
 
 ### 2.1. Réplication
 
-La réplication est au cœur de toute architecture distribuée. Dans PGSQL, elle repose sur la propagation des modifications enregistrées dans les Write-Ahead Logs ([WAL](https://www.PGSQL.org/docs/current/wal-intro.html)) qui permet à PGSQL de synchroniser les répliques avec le leader de manière fiable, bien que les modes de réplication choisis influent sur les performances et la cohérence.
+La réplication est au cœur de toute architecture distribuée. Dans PGSQL, elle repose sur la propagation des modifications enregistrées dans les Write-Ahead Logs ([WAL](https://www.postgresql.org/docs/current/wal-intro.html)) qui permet à PGSQL de synchroniser les répliques avec le leader de manière fiable, bien que les modes de réplication choisis influent sur les performances et la cohérence.
 
 PGSQL offre trois approches principales : la réplication synchrone, asynchrone et logique. Ces mécanismes ont chacun leurs avantages et limites, notamment en termes de latence, de tolérance aux pannes et de cohérence des données.
 
 #### La réplication synchrone
 
-Dans la [réplication synchrone](https://www.PGSQL.org/docs/17/warm-standby.html#SYNCHRONOUS-REPLICATION), PGSQL garantit que toutes les répliques désignées reçoivent et confirment les modifications avant que la transaction ne soit validée. Ce processus repose sur un échange constant de messages entre le leader et les répliques, où chaque réplique doit envoyer un accusé de réception pour signaler qu’elle a bien appliqué les modifications. Ce niveau de coordination renforce la cohérence : une fois qu’une transaction est validée, toutes les répliques synchrones reflètent immédiatement son état.
+Dans la [réplication synchrone](https://www.postgresql.org/docs/17/warm-standby.html#SYNCHRONOUS-REPLICATION), PGSQL garantit que toutes les répliques désignées reçoivent et confirment les modifications avant que la transaction ne soit validée. Ce processus repose sur un échange constant de messages entre le leader et les répliques, où chaque réplique doit envoyer un accusé de réception pour signaler qu’elle a bien appliqué les modifications. Ce niveau de coordination renforce la cohérence : une fois qu’une transaction est validée, toutes les répliques synchrones reflètent immédiatement son état.
 
 Cependant, cette approche a un coût. Si une réplique est défaillante ou géographiquement distante, la latence introduite par le réseau peut ralentir considérablement les transactions. Imaginez un leader situé en Europe qui envoie des journaux à une réplique synchronisée en Asie. Même avec des connexions rapides, la latence réseau peut ajouter des dizaines de millisecondes à chaque transaction. Cette attente, bien que supportable pour des systèmes critiques comme ceux des banques, devient problématique dans des applications à haut débit ayant besoin d'une faible latence.
 
@@ -51,7 +51,7 @@ Configurer la réplication dans PGSQL nécessite de définir les rôles des serv
 
 **1. Préparation du leader :**
 
-[Le serveur principal](https://www.PGSQL.org/docs/current/runtime-config-replication.html#RUNTIME-CONFIG-REPLICATION-PRIMARY) (leader) doit être configuré pour activer la réplication. Ça inclut les étapes suivantes :
+[Le serveur principal](https://www.postgresql.org/docs/current/runtime-config-replication.html#RUNTIME-CONFIG-REPLICATION-PRIMARY) (leader) doit être configuré pour activer la réplication. Ça inclut les étapes suivantes :
 
 - **Activer le niveau de WAL approprié :** Modifier le paramètre `wal_level` dans `PGSQL.conf` et le définir sur `replica` ou `logical` selon le type de réplication souhaité.
 - **Configurer le nombre de connexions de répliques :** Le paramètre `max_wal_senders` détermine le nombre maximum de connexions simultanées pour les processus envoyant les journaux WAL. Par défaut, il est fixé à 10.
@@ -59,7 +59,7 @@ Configurer la réplication dans PGSQL nécessite de définir les rôles des serv
 
 **2. Configuration des répliques :**
 
-Les [serveurs standby,](https://www.PGSQL.org/docs/current/runtime-config-replication.html#RUNTIME-CONFIG-REPLICATION-STANDBY) qu’ils soient pour une réplication synchrone ou asynchrone, nécessitent :
+Les [serveurs standby,](https://www.postgresql.org/docs/current/runtime-config-replication.html#RUNTIME-CONFIG-REPLICATION-STANDBY) qu’ils soient pour une réplication synchrone ou asynchrone, nécessitent :
 
 - **Définir `primary_conninfo` :** Fournir les informations de connexion au leader, y compris l’adresse IP ou le nom d’hôte, le port, et les informations d’authentification.
 - **Utiliser les slots de réplication :** Associer une réplique à un slot pour garantir la continuité de la réplication, même en cas de déconnexion temporaire.
@@ -84,7 +84,7 @@ Ces deux techniques sont utilisées pour diviser les données en ensembles plus 
 
 #### Partitionnement natif dans PGSQL 
 
-Depuis la version 10, PGSQL propose un [partitionnement](https://www.PGSQL.org/docs/17/ddl-partitioning.html) natif qui divise une table en sous-tables ou "partitions" selon des critères déclarés au moment de la création de la table. Ça permet d’organiser les données et d'améliorer les performances des requêtes en travaillant sur des ensembles de données plus petits.
+Depuis la version 10, PGSQL propose un [partitionnement](https://www.postgresql.org/docs/17/ddl-partitioning.html) natif qui divise une table en sous-tables ou "partitions" selon des critères déclarés au moment de la création de la table. Ça permet d’organiser les données et d'améliorer les performances des requêtes en travaillant sur des ensembles de données plus petits.
 
 Par exemple, pour une table contenant des données de séries temporelles comme des logs , le partitionnement par plages (range partitioning) permet de diviser les données par mois ou année. Quand une requête cible une période donnée, PGSQL ignore automatiquement les partitions non pertinentes grâce à son mécanisme d’exclusion de partitions, ce qui améliore la performance.
 
@@ -140,11 +140,11 @@ Quand un nœud tombe, la première étape est de s’en rendre compte. PGSQL ne 
 
 #### Répliques en panne
 
-Quand une réplique plante, PGSQL peut la remettre sur pied grâce à ses journaux [WAL](https://www.PGSQL.org/docs/current/wal-intro.html). Ces journaux enregistrent toutes les modifications effectuées sur le leader. Lorsqu’une réplique revient à la vie, elle consulte son journal local pour voir où elle s’est arrêtée et demande au leader de lui envoyer les transactions manquantes (catch-up recovery). Ce processus est rapide et garantit que tout reste en ordre.
+Quand une réplique plante, PGSQL peut la remettre sur pied grâce à ses journaux [WAL](https://www.postgresql.org/docs/current/wal-intro.html). Ces journaux enregistrent toutes les modifications effectuées sur le leader. Lorsqu’une réplique revient à la vie, elle consulte son journal local pour voir où elle s’est arrêtée et demande au leader de lui envoyer les transactions manquantes (catch-up recovery). Ce processus est rapide et garantit que tout reste en ordre.
 
 #### Le leader en panne
 
-La panne d’un leader est une toute autre histoire. Ici, on doit déclencher un [failover](https://www.PGSQL.org/docs/17/warm-standby-failover.html) : promouvoir une réplique en tant que nouveau leader. Patroni surveille les nœuds via un système comme [Etcd](https://github.com/etcd-io/etcd) ou [ZooKeeper](https://zookeeper.apache.org/) et décide, en cas de besoin, qui prendra le relais. Une fois le failover terminé, il faut s’assurer que l’ancien leader ne revienne pas comme si de rien n’était : un mécanisme appelé [STONITH](https://en.wikipedia.org/wiki/STONITH) (Shoot The Other Node In The Head) veille à ce qu’un nœud défaillant ne cause pas de confusion.
+La panne d’un leader est une toute autre histoire. Ici, on doit déclencher un [failover](https://www.postgresql.org/docs/17/warm-standby-failover.html) : promouvoir une réplique en tant que nouveau leader. Patroni surveille les nœuds via un système comme [Etcd](https://github.com/etcd-io/etcd) ou [ZooKeeper](https://zookeeper.apache.org/) et décide, en cas de besoin, qui prendra le relais. Une fois le failover terminé, il faut s’assurer que l’ancien leader ne revienne pas comme si de rien n’était : un mécanisme appelé [STONITH](https://en.wikipedia.org/wiki/STONITH) (Shoot The Other Node In The Head) veille à ce qu’un nœud défaillant ne cause pas de confusion.
 
 Si notre ancien leader revient en ligne après un failover, il faut utiliser `pg_rewind` pour le resynchroniser rapidement avec le nouveau leader. C’est plus rapide que de reconstruire une réplique à partir de zéro.
 
@@ -206,7 +206,7 @@ Pour les applications analytiques ou massivement parallèles, une approche moins
 
 ### Quand la cohérence rencontre la concurrence : MVCC et isolation
 
-Le modèle [MVCC](https://wiki.PGSQL.org/wiki/MVCC) de PGSQL garantit que les lectures et les écritures ne se bloquent pas mutuellement, même sous des niveaux d’isolation élevés comme `Serializable`. Ce modèle offre une cohérence instantanée à chaque transaction, tout en minimisant les verrous. Cependant, pour des besoins très stricts, on peut utiliser des transactions [serialisables](https://www.PGSQL.org/docs/current/transaction-iso.html#XACT-SERIALIZABLE) ou des [verrous explicites](https://www.PGSQL.org/docs/current/explicit-locking.html) pour éviter les anomalies.
+Le modèle [MVCC](https://wiki.postgresql.org/wiki/MVCC) de PGSQL garantit que les lectures et les écritures ne se bloquent pas mutuellement, même sous des niveaux d’isolation élevés comme `Serializable`. Ce modèle offre une cohérence instantanée à chaque transaction, tout en minimisant les verrous. Cependant, pour des besoins très stricts, on peut utiliser des transactions [serialisables](https://www.PGSQL.org/docs/current/transaction-iso.html#XACT-SERIALIZABLE) ou des [verrous explicites](https://www.PGSQL.org/docs/current/explicit-locking.html) pour éviter les anomalies.
 
 ## 7. Conclusion et perspectives
 - Résumé des forces et limites de PGSQL dans la distribution.
@@ -219,9 +219,9 @@ Le modèle [MVCC](https://wiki.PGSQL.org/wiki/MVCC) de PGSQL garantit que les le
 1. Shard Rebalancing in Citus 10.1. [Citus Data Blog](https://www.citusdata.com/blog/2021/09/03/shard-rebalancing-in-citus-10-1)
 2. Citus' Replication Model: Today and Tomorrow [Citus Data Blog](https://www.citusdata.com/blog/2016/12/15/citus-replication-model-today-and-tomorrow/)
 3. Cluster Management [Citus documentation](https://docs.citusdata.com/en/stable/admin_guide/cluster_management.html)
-4. Failover. [PG documentation](https://www.PGSQL.org/docs/17/warm-standby-failover.html)
-5. Replication. [PG documentation](https://www.PGSQL.org/docs/current/runtime-config-replication.html)
-6. Concurrency Control [PG documentation](https://www.PGSQL.org/docs/current/mvcc.html)
+4. Failover. [PG documentation](https://www.postgresql.org/docs/17/warm-standby-failover.html)
+5. Replication. [PG documentation](https://www.postgresql.org/docs/current/runtime-config-replication.html)
+6. Concurrency Control [PG documentation](https://www.postgresql.org/docs/current/mvcc.html)
 7. Understanding partitioning and sharding in Postgres and Citus. [Azure Database for PGSQL Blog](https://techcommunity.microsoft.com/blog/adforPGSQL/understanding-partitioning-and-sharding-in-postgres-and-citus/3891629)
 8. An Overview of Distributed  PGSQL Architectures. [Crunchydata Blog](https://www.crunchydata.com/blog/an-overview-of-distributed-PGSQL-architectures)
 9. How PostreSQL replication works. [Medium Blog](https://medium.com/moveax/how-PGSQL-replication-works-6288b3e6000e)
