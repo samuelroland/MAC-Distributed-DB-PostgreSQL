@@ -1,11 +1,72 @@
-<center style="margin:auto; height:100%;">
+<!--
+# Based on DAI theme:
+# https://github.com/heig-vd-dai-course/heig-vd-dai-course/blob/7eb91c050f1bad18f766b4a4916d2ebc425be47b/04-java-intellij-idea-and-maven/PRESENTATION.md?plain=1#L8
+theme: gaia
+size: 16:9
+paginate: true
+style: |
+    :root {
+        --color-background: #fff;
+        --color-foreground: #333;
+        --color-highlight: #f96;
+        --color-dimmed: #1566aa;
+        --color-headings: #336791;
+    }
+    blockquote {
+        font-style: italic;
+    }
+    table {
+        width: 100%;
+    }
+    section {
+        padding: 30px;
+    }
+    ul {
+        margin: 0.4rem 0
+    }
+    p, li {
+        font-size: 0.6rem
+    }
+    th:first-child {
+        width: 15%;
+    }
+    h1, h2, h3, h4, h5, h6 {
+        color: var(--color-headings);
+    }
+    h2, h3 {
+        font-size: 1.1rem;
+    }
+    h4, h5, h6 {
+        font-size: 1.0rem;
+    }
+    h1 a:link, h2 a:link, h3 a:link, h4 a:link, h5 a:link, h6 a:link {
+        text-decoration: none;
+    }
+    section:not([class=lead]) > p, blockquote {
+        text-align: justify;
+    }
+    .columns {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 1rem;
+    }
+    .columns {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 1rem;
+    }
+-->
+<center style="margin:auto; padding:20px;">
 
 # PostgreSQL en système distribué
 
-*Timothée Van Hove et Samuel Roland*
+##### Timothée Van Hove et Samuel Roland
+
+<div style="height: 500px; display: flex; justify-content: center; align-items: center">
 
 ![width:300](imgs/postgresql.logo.png) ![width:400](imgs/citus.svg#citus-elicorn-green)
 
+</div>
 </center>
 
 ---
@@ -15,15 +76,19 @@ description factuelle des possibilités avec PGSQL et Citus.
 
 ---
 
-## Réplication
+<center>
 
-### Replication dans PGSQL
+### Réplication dans PGSQL
 
-![](imgs/replication-intro.jpg)
+![width:700](imgs/replication-intro.jpg)
+
+</center>
+
+---
 
 ### Qu’est-ce que la Streaming Replication ?
 
-**Speaker notes**
+<!--
 
 La streaming replication de PostgreSQL, la plus courante, est une réplication physique qui réplique les changements au niveau byte par byte, créant une copie identique de la base de données sur des autres serveurs.
 
@@ -35,19 +100,21 @@ Un processus appelé WAL receiver, fonctionnant sur le serveur répliqué, se co
 
 Sur le serveur primaire, il existe un autre processus, appelé WAL sender, qui est chargé d'envoyer les registres WAL au serveur de secours au fur et à mesure.
 
-**Slides**
+-->
+
 
 - Réplication la plus courante (leader unique)
 - Utilise les journaux WAL pour synchroniser les followers (standby nodes) avec le leader (primary node).
 - Les followers recoivent les journeaux WAL de manière quasi-continue
 
 
+![width:1000](imgs/streaming-replication.png)
 
-![](imgs/streaming-replication.png)
+---
 
 ### Streaming Replication - Modes
 
-**Speaker notes**
+<!--
 
 Il existe deux modes de Streaming replication, synchrone et asynchrone.
 
@@ -55,32 +122,40 @@ Il existe deux modes de Streaming replication, synchrone et asynchrone.
 * Asynchrone: Les répliques peuvent accumuler un léger retard (replication lag), mais elles restent proches du leader si les ressources réseau et matérielles sont suffisantes. **Cas d’usage : Applications tolérant des incohérences temporaires (ex. : réseaux sociaux).**
 * Réplication en cascade: Si on a beaucoup de répliques, envoyer directement les journaux à chacune peut surcharger le Primary Server. En utilisant la cascade, certains folowers agissent comme relais. **Cas d'usage** : Dans des environnements distribués géographiquement, un Standby Server intermédiaire peut être positionné plus près des autres serveurs pour minimiser la latence réseau.
 
-**Slides**
+-->
 
-* Mode Synchrone
+<div class="columns">
+
+<div>
+
+* **Mode Synchrone**
   * Le Primary Server (Leader) attend la confirmation des répliques avant de valider une transaction.
-* Mode Asynchrone
+* **Mode Asynchrone**
   * Le Primary Server (Leader) n'attend pas de confirmation des répliques ; il envoie les WAL dès qu'ils sont générés.
-* Réplication en cascade
+* **Réplication en cascade**
   * Un Standby Server (Follower) peut avoir le charge d'envoyer les WAL à d'autres followers. On parle de "Sending server"
   * ça permet de réduire la charge du leader
 
+</div>
 
+<div>
 
-![](imgs/cascade.png)
+![width:700](imgs/cascade.png)
 
-
+</div>
+</div>
+---
 
 ### Qu’est-ce que la Logical Replication ?
 
-**Speaker notes**
+<!--
 
 * La réplication logique réplique les données au niveau des lignes et des colonnes. Contrairement à la Streaming replication, elle ne copie pas les blocs de données au niveau byte, mais les modifications au niveau logique.
 * Elle fonctionne sur le principe publisher-subscriber:
   * **Publisher** : Définit des publications (ensembles de données et types de changements à répliquer).
   * **Subscriber** : Souscrit à une ou plusieurs publications et applique les changements.
 
-**Slides**
+-->
 
 - Réplique les modifications au niveau des transactions (lignes/tables spécifiques).
 - Fonctionne via des **publishers** et des **subscribers**.
@@ -94,14 +169,13 @@ Il existe deux modes de Streaming replication, synchrone et asynchrone.
 
 
 
-![](imgs/logical-replication-simple.png)
+![width:800](imgs/logical-replication-simple.png)
 
-
+---
 
 ### Comment fonctionne la Logical Replication ?
 
-**Speaker notes**
-
+<!--
 - Le **processus wal sender** côté Publisher extrait les modifications à partir du WAL.
 - Il utilise un **plugin de décodage logique** (`pgoutput` par défaut) pour traduire ces modifications en un format compréhensible pour la réplication logique.
 - Les modifications sont ensuite envoyées aux subscribers
@@ -109,21 +183,26 @@ Il existe deux modes de Streaming replication, synchrone et asynchrone.
 - **Le processus apply worker** sur le Subscriber reçoit les modifications.
 - Il les mappe aux tables locales et applique chaque modification dans le même ordre transactionnel que sur le Publisher.
 
-**Slides**
+-->
+
 
 - Le Publisher transforme le WAL en opérations transactionnelles
 - Les informations sont envoyées aux subscribers
 - Les schémas doivent être identiques ou compatibles entre Publisher et Subscriber.
 
 
+<center>
 
-![](imgs/logical-replication.png)
+![width:700](imgs/logical-replication.png)
+</center>
 
 
-
-
+---
 
 ### Streaming vs Logical Replication
+
+<div class="columns">
+<div>
 
 **Streaming Replication**
 
@@ -136,6 +215,10 @@ Il existe deux modes de Streaming replication, synchrone et asynchrone.
   - Réplique toute la base.
   - Pas de personnalisation ou de filtrage des données.
 
+
+</div>
+<div>
+
 **Logical Replication**
 
 - Réplication logique type Publish-Subscribe
@@ -147,24 +230,27 @@ Il existe deux modes de Streaming replication, synchrone et asynchrone.
   - Conflits possibles en cas d'écritures locales sur le Subscriber.
   - Schéma et séquences non répliqués automatiquement.
 
-![](imgs\streaming-logical.jpeg)
+</div>
+<div>
+
+![width:350](imgs/streaming-logical.jpeg)
+
+</div>
+</div>
 
 
-
+---
 
 ### "Réplication multi-leader ? Bi-Directional Replication"
 
-**Speaker notes**
-
+<!--
 BDR est une extension conçue pour offrir la réplication multi-leader. Dans ce modèle, plusieurs nœuds peuvent agir comme leaders, chacun acceptant des écritures. ça permet une répartition des charges d'écriture.
 
 BDR se base sur la réplication logique. Chaque modification effectuée sur un nœud est répliquée aux autres, et les conflits potentiels sont gérés grâce à un système de détection et de résolution des conflits.
 
 Les conflits apparaissent lorsque deux nœuds modifient simultanément une même ligne. Par défaut, BDR applique un résolveur appelé `update_if_newer`, qui conserve la version la plus récente basée sur le timestamp de commit. Si les timestamps sont identiques, l'ID du nœud est utilisé comme critère de départage.
 
-
-
-**Slide**
+-->
 
 PGSQL ne supporte pas la réplication multi-leader nativement.  BDR est une extension pour la réplication multi-leader basée sur le logical replication:
 
