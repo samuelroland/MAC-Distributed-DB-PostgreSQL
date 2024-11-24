@@ -72,7 +72,6 @@ style: |
 
 ---
 
-### Comment faire de PostgreSQL un SGBD distribué?
 
 <!--
 
@@ -87,10 +86,18 @@ Dans une deuxième partie, nous allons expliquer les capacités natives de parti
 
 -->
 
+<div style="height: 100%; display: flex; justify-content: center; align-items: center">
+<div>
+
+### Comment faire de PostgreSQL un SGBD distribué?
+
 Nous allons traiter 2 axes principaux de la distribution dans PostgreSQL :
 
 - **Réplication** : Garantir la disponibilité des données en les répliquant entre plusieurs serveurs.
 - **Partitionnement et Sharding** : Diviser les données pour améliorer la scalabilité et l'efficacité.
+
+</div>
+</div>
 
 
 ---
@@ -308,17 +315,23 @@ select name from events where date = '2024-05-01' -- Jour spécifique
 
 ---
 
-![width:1100](./imgs/partionnement.png)
+## Partionnement natif PGSQL
+
+![width:1050](./imgs/partionnement.png)
 
 ---
+
+## Sharding avec Citus
 
 ![width:1100](./imgs/citus-1.png)
 
 ---
 
-![width:1100](./imgs/citus-2.png)
+## Citus - routage
+![width:1050](./imgs/citus-2.png)
 
 ---
+## Citus - parallélisation
 
-![width:1100](./imgs/citus-3.png)
+![width:1050](./imgs/citus-3.png)
 
