@@ -286,7 +286,7 @@ PGSQL ne supporte pas la réplication multi-leader nativement.  BDR est une exte
 
 * **Limites :**
   * Complexité : gestion des conflits entre les nœuds.
-  * Licence commerciale et non open-source complète.
+  * Licence commerciale et "source disponible"
 
 </div>
 </div>
@@ -310,42 +310,15 @@ select name from events where date = '2024-05-01' -- Jour spécifique
 
 ![width:1100](./imgs/partionnement.png)
 
-<!-- --- -->
-<!---->
-<!-- ## Késako ? -->
-<!---->
-<!-- <div class="columns2"> -->
-<!---->
-<!-- <div> -->
-<!---->
-<!-- **Partionnement** -->
-<!---->
-<!-- </div> -->
-<!---->
-<!-- <div> -->
-<!---->
-<!-- **Sharding** -->
-<!---->
-<!-- </div> -->
-<!-- </div> -->
-<!---->
+---
 
-<!-- --- -->
-<!-- ## 3 type de partionnements -->
-<!-- 1. Partitionnement par plages (range partitioning) -->
-<!-- 1. Partitionnement par liste (list partitioning) -->
-<!-- 1. Partitionnement par hachage (hash partitioning) -->
-<!---->
-<!-- <div style="display: flex"> -->
-<!---->
-<!-- ![width:400](imgs/multi-leader.jpg) -->
-<!---->
-<!-- <div style="margin-left: 20px"> -->
-<!---->
-<!---->
-<!-- - test -->
-<!-- - test -->
-<!---->
-<!-- </div> -->
-<!-- </div> -->
+![width:1100](./imgs/citus-1.png)
+
+---
+
+![width:1100](./imgs/citus-2.png)
+
+---
+
+![width:1100](./imgs/citus-3.png)
 
