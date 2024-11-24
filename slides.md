@@ -179,33 +179,28 @@ Il existe deux modes de Streaming replication, synchrone et asynchrone.
 
 
 * Réplique les modifications au niveau des transactions (lignes/tables spécifiques).
-* Fonctionne via des **publishers** et des **subscribers**.
-* Permet une réplication personnalisée (par exemple, seulement certaines tables).
-* Avantages :
-  * Permet de répliquer des tables spécifiques ou des sous-ensembles de données.
-  * Fonctionne entre différentes versions PGSQL et OS, utile pour des mises à jour progressives ou des migrations.
-* Limites:
-  *  Les modifications locales sur le Subscriber peuvent entraîner des conflits avec les données répliquées.
-  *  Les changements de schéma ne sont pas répliqués automatiquement.
+* Fonctionne via un **publisher** (leader) et des **subscribers** (followers)
+* Le Publisher transforme le WAL en opérations transactionnelles (UPDATE, INSERT, DELETE...)
+* Les opérations sont envoyées aux subscribers, puis sont appliquées dans le même ordre transactionnel que sur le Publisher.
+* Les schémas doivent être identiques ou compatibles entre Publisher et Subscriber.
 
 
 
 ![width:800](imgs/logical-replication-simple.png)
 
+<!--
 
 ---
 
 ### Comment fonctionne la Logical Replication ?
 
-<!--
+
 - Le **processus wal sender** côté Publisher extrait les modifications à partir du WAL.
 - Il utilise un **plugin de décodage logique** (`pgoutput` par défaut) pour traduire ces modifications en un format compréhensible pour la réplication logique.
 - Les modifications sont ensuite envoyées aux subscribers
 
 - **Le processus apply worker** sur le Subscriber reçoit les modifications.
 - Il les mappe aux tables locales et applique chaque modification dans le même ordre transactionnel que sur le Publisher.
-
--->
 
 
 * Le Publisher transforme le WAL en opérations transactionnelles
@@ -218,6 +213,7 @@ Il existe deux modes de Streaming replication, synchrone et asynchrone.
 ![width:700](imgs/logical-replication.png)
 </center>
 
+-->
 
 ---
 
@@ -228,14 +224,13 @@ Il existe deux modes de Streaming replication, synchrone et asynchrone.
 
 **Streaming Replication**
 
-* Réplication physique, type Leader-Follower (primary et standbys)
-* Objectif : Maintenir une copie exacte de la base pour haute disponibilité et basculement.
-* Avantages :
-  * Simple à configurer.
-  * Faible latence, idéal pour la continuité des services critiques.
-* Limites :
-  * Réplique toute la base.
-  * Pas de personnalisation ou de filtrage des données.
+- Objectif : Maintenir une copie exacte de la base pour haute disponibilité et basculement.
+- Avantages :
+  - Simple à configurer.
+  - Faible latence.
+- Limites :
+  - Réplique toute la base.
+  - Pas de personnalisation ou de filtrage des données.
 
 
 </div>
@@ -243,14 +238,13 @@ Il existe deux modes de Streaming replication, synchrone et asynchrone.
 
 **Logical Replication**
 
-* Réplication logique type Publish-Subscribe
-* Objectif : Partager des données spécifiques
-* Avantages :
-  * Flexible, permet de cibler des tables ou types de modifications.
-  * Compatible entre versions ou plateformes.
-* Limites :
-  * Conflits possibles en cas d'écritures locales sur le Subscriber.
-  * Schéma et séquences non répliqués automatiquement.
+- Objectif : Partager des données spécifiques
+- Avantages :
+  - Flexible, permet de cibler des tables ou types de modifications.
+  - Compatible entre versions ou plateformes.
+- Limites :
+  - Conflits possibles en cas d'écritures locales sur le Subscriber.
+  - Schéma non répliqué automatiquement.
 
 </div>
 <div>
@@ -289,7 +283,6 @@ PGSQL ne supporte pas la réplication multi-leader nativement.  BDR est une exte
 
 * **Avantages :**
   * Partage de la charge d’écriture entre plusieurs nœuds.
-  * Résilience : chaque leader peut agir comme un secours.
 
 * **Limites :**
   * Complexité : gestion des conflits entre les nœuds.
