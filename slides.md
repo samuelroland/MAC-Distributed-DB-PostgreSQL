@@ -69,10 +69,29 @@ style: |
 </div>
 </center>
 
+
 ---
 
-## Introduction
-description factuelle des possibilités avec PGSQL et Citus.
+### Comment faire de PostgreSQL un SGBD distribué?
+
+<!--
+
+PostgreSQL, est conçu à l'origine pour des systèmes monolithiques.
+
+Nous allons voir ensemble que PostgreSQL peut aussi être utilisé comme un SGBD distribué avec des fonctionnalités de réplication, mais aussi de partitionnement et de sharding avec des extensions.
+
+
+Dans une première partie, nous allons explorer les possibilités de réplication
+
+Dans une deuxième partie, nous allons expliquer les capacités natives de partitionnement et les extensions permettant de mettre en place du sharding.
+
+-->
+
+Nous allons traiter 2 axes principaux de la distribution dans PostgreSQL :
+
+- **Réplication** : Garantir la disponibilité des données en les répliquant entre plusieurs serveurs.
+- **Partitionnement et Sharding** : Diviser les données pour améliorer la scalabilité et l'efficacité.
+
 
 ---
 
@@ -103,9 +122,9 @@ Sur le serveur primaire, il existe un autre processus, appelé WAL sender, qui e
 -->
 
 
-- Réplication la plus courante (leader unique)
-- Utilise les journaux WAL pour synchroniser les followers (standby nodes) avec le leader (primary node).
-- Les followers recoivent les journeaux WAL de manière quasi-continue
+* Réplication la plus courante (leader unique)
+* Utilise les journaux WAL pour synchroniser les followers (standby nodes) avec le leader (primary node).
+* Les followers recoivent les journeaux WAL de manière quasi-continue
 
 
 ![width:1000](imgs/streaming-replication.png)
@@ -158,19 +177,21 @@ Il existe deux modes de Streaming replication, synchrone et asynchrone.
 
 -->
 
-- Réplique les modifications au niveau des transactions (lignes/tables spécifiques).
-- Fonctionne via des **publishers** et des **subscribers**.
-- Permet une réplication personnalisée (par exemple, seulement certaines tables).
-- Avantages :
-  - Permet de répliquer des tables spécifiques ou des sous-ensembles de données.
-  - Fonctionne entre différentes versions PGSQL et OS, utile pour des mises à jour progressives ou des migrations.
-- Limites:
-  -  Les modifications locales sur le Subscriber peuvent entraîner des conflits avec les données répliquées.
-  -  Les changements de schéma ne sont pas répliqués automatiquement.
+
+* Réplique les modifications au niveau des transactions (lignes/tables spécifiques).
+* Fonctionne via des **publishers** et des **subscribers**.
+* Permet une réplication personnalisée (par exemple, seulement certaines tables).
+* Avantages :
+  * Permet de répliquer des tables spécifiques ou des sous-ensembles de données.
+  * Fonctionne entre différentes versions PGSQL et OS, utile pour des mises à jour progressives ou des migrations.
+* Limites:
+  *  Les modifications locales sur le Subscriber peuvent entraîner des conflits avec les données répliquées.
+  *  Les changements de schéma ne sont pas répliqués automatiquement.
 
 
 
 ![width:800](imgs/logical-replication-simple.png)
+
 
 ---
 
@@ -187,9 +208,9 @@ Il existe deux modes de Streaming replication, synchrone et asynchrone.
 -->
 
 
-- Le Publisher transforme le WAL en opérations transactionnelles
-- Les informations sont envoyées aux subscribers
-- Les schémas doivent être identiques ou compatibles entre Publisher et Subscriber.
+* Le Publisher transforme le WAL en opérations transactionnelles
+* Les informations sont envoyées aux subscribers
+* Les schémas doivent être identiques ou compatibles entre Publisher et Subscriber.
 
 
 <center>
@@ -207,14 +228,14 @@ Il existe deux modes de Streaming replication, synchrone et asynchrone.
 
 **Streaming Replication**
 
-- Réplication physique, type Leader-Follower (primary et standbys)
-- Objectif : Maintenir une copie exacte de la base pour haute disponibilité et basculement.
-- Avantages :
-  - Simple à configurer.
-  - Faible latence, idéal pour la continuité des services critiques.
-- Limites :
-  - Réplique toute la base.
-  - Pas de personnalisation ou de filtrage des données.
+* Réplication physique, type Leader-Follower (primary et standbys)
+* Objectif : Maintenir une copie exacte de la base pour haute disponibilité et basculement.
+* Avantages :
+  * Simple à configurer.
+  * Faible latence, idéal pour la continuité des services critiques.
+* Limites :
+  * Réplique toute la base.
+  * Pas de personnalisation ou de filtrage des données.
 
 
 </div>
@@ -222,14 +243,14 @@ Il existe deux modes de Streaming replication, synchrone et asynchrone.
 
 **Logical Replication**
 
-- Réplication logique type Publish-Subscribe
-- Objectif : Partager des données spécifiques
-- Avantages :
-  - Flexible, permet de cibler des tables ou types de modifications.
-  - Compatible entre versions ou plateformes.
-- Limites :
-  - Conflits possibles en cas d'écritures locales sur le Subscriber.
-  - Schéma et séquences non répliqués automatiquement.
+* Réplication logique type Publish-Subscribe
+* Objectif : Partager des données spécifiques
+* Avantages :
+  * Flexible, permet de cibler des tables ou types de modifications.
+  * Compatible entre versions ou plateformes.
+* Limites :
+  * Conflits possibles en cas d'écritures locales sur le Subscriber.
+  * Schéma et séquences non répliqués automatiquement.
 
 </div>
 <div>
@@ -261,20 +282,18 @@ Les conflits apparaissent lorsque deux nœuds modifient simultanément une même
 
 PGSQL ne supporte pas la réplication multi-leader nativement.  BDR est une extension pour la réplication multi-leader basée sur le logical replication:
 
-- Chaque nœud agit comme un leader capable d’accepter des écritures
-- Les conflits d’écriture sont détectés lorsque plusieurs nœuds modifient les mêmes données.
-- Utilise des résolveurs de conflits pour déterminer comment gérer ces situations.
-  - Par défaut, BDR applique le résolveur `update_if_newer`, qui conserve la version de la ligne ayant le timestamp de commit le plus récent.
+* Chaque nœud agit comme un leader capable d’accepter des écritures
+* Les conflits d’écriture sont détectés lorsque plusieurs nœuds modifient les mêmes données.
+* Utilise des résolveurs de conflits pour déterminer comment gérer ces situations.
+  * Par défaut, BDR applique le résolveur `update_if_newer`, qui conserve la version de la ligne ayant le timestamp de commit le plus récent.
 
-**Avantages :**
+* **Avantages :**
+  * Partage de la charge d’écriture entre plusieurs nœuds.
+  * Résilience : chaque leader peut agir comme un secours.
 
-- Partage de la charge d’écriture entre plusieurs nœuds.
-- Résilience : chaque leader peut agir comme un secours.
-
-**Limites :**
-
-- Complexité : gestion des conflits entre les nœuds.
-- Licence commerciale et non open-source complète.
+* **Limites :**
+  * Complexité : gestion des conflits entre les nœuds.
+  * Licence commerciale et non open-source complète.
 
 </div>
 </div>
