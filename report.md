@@ -53,7 +53,7 @@ Configurer la réplication dans PGSQL nécessite de définir les rôles des serv
 
 [Le serveur principal](https://www.postgresql.org/docs/current/runtime-config-replication.html#RUNTIME-CONFIG-REPLICATION-PRIMARY) (leader) doit être configuré pour activer la réplication. Ça inclut les étapes suivantes :
 
-- **Activer le niveau de WAL approprié :** Modifier le paramètre `wal_level` dans `PGSQL.conf` et le définir sur `replica` ou `logical` selon le type de réplication souhaité.
+- **Activer le niveau de WAL approprié :** Modifier le paramètre `wal_level` dans `postgresql.conf` et le définir sur `replica` ou `logical` selon le type de réplication souhaité.
 - **Configurer le nombre de connexions de répliques :** Le paramètre `max_wal_senders` détermine le nombre maximum de connexions simultanées pour les processus envoyant les journaux WAL. Par défaut, il est fixé à 10.
 - **Activer les slots de réplication :** Pour éviter que des journaux nécessaires aux répliques ne soient supprimés, configurer `max_replication_slots` avec un nombre suffisant pour les répliques prévues.
 
@@ -102,7 +102,7 @@ Les avantages du partitionnement sont multiples :
 
 Cependant, le partitionnement natif reste limité à un nœud unique. Si les données ou la charge augmentent au-delà des capacités d’un serveur, cette approche ne suffit plus.
 
-#### Sharding distribué avec [Citus](https://docs.citusdata.com/en/stable/admin_guide/cluster_management.html#PGSQL-extensions) : Scalabilité horizontale pour PGSQL
+#### Sharding distribué avec [Citus](https://docs.citusdata.com/en/stable/admin_guide/cluster_management.html#postgresql-extensions) : Scalabilité horizontale pour PGSQL
 
 Lorsque les limites d’un seul serveur sont atteintes, le [sharding](https://docs.citusdata.com/en/stable/get_started/concepts.html#sharding-models) devient une solution incontournable. Contrairement au partitionnement, qui divise les données sur un nœud unique, le sharding distribue les données entre plusieurs nœuds d’un cluster. Ça permet une scalabilité horizontale où chaque nœud gère un sous-ensemble des données, appelé "[shard](https://docs.citusdata.com/en/stable/get_started/concepts.html#shards)". PGSQL n’implémente pas nativement le sharding, mais des extensions comme Citus transforment PGSQL en une base de données massivement distribuée.
 
@@ -180,7 +180,7 @@ La cohérence forte est le saint Graal des systèmes transactionnels. Dans PGSQL
 
 Si une réplique tombe en panne ou devient inaccessible, le leader peut bloquer les nouvelles transactions pour maintenir cette cohérence stricte. Ça peut être un frein pour la disponibilité, mais pour des cas critiques comme les banques ou les applications médicales, c’est un prix à payer acceptable.
 
-On configure ça via des paramètres comme `synchronous_commit` et `synchronous_standby_names` dans le fichier `PGSQL.conf`. Ça nous permet même de choisir les répliques qui doivent être synchrones, offrant de la flexibilité.
+On configure ça via des paramètres comme `synchronous_commit` et `synchronous_standby_names` dans le fichier `postgresql.conf`. Ça nous permet même de choisir les répliques qui doivent être synchrones, offrant de la flexibilité.
 
 ### Cohérence éventuelle et tolérance au retard
 
@@ -206,7 +206,7 @@ Pour les applications analytiques ou massivement parallèles, une approche moins
 
 ### Quand la cohérence rencontre la concurrence : MVCC et isolation
 
-Le modèle [MVCC](https://wiki.postgresql.org/wiki/MVCC) de PGSQL garantit que les lectures et les écritures ne se bloquent pas mutuellement, même sous des niveaux d’isolation élevés comme `Serializable`. Ce modèle offre une cohérence instantanée à chaque transaction, tout en minimisant les verrous. Cependant, pour des besoins très stricts, on peut utiliser des transactions [serialisables](https://www.PGSQL.org/docs/current/transaction-iso.html#XACT-SERIALIZABLE) ou des [verrous explicites](https://www.PGSQL.org/docs/current/explicit-locking.html) pour éviter les anomalies.
+Le modèle [MVCC](https://wiki.postgresql.org/wiki/MVCC) de PGSQL garantit que les lectures et les écritures ne se bloquent pas mutuellement, même sous des niveaux d’isolation élevés comme `Serializable`. Ce modèle offre une cohérence instantanée à chaque transaction, tout en minimisant les verrous. Cependant, pour des besoins très stricts, on peut utiliser des transactions [serialisables](https://www.postgresql.org/docs/current/transaction-iso.html#XACT-SERIALIZABLE) ou des [verrous explicites](https://www.postgresql.org/docs/current/explicit-locking.html) pour éviter les anomalies.
 
 ## 7. Conclusion et perspectives
 - Résumé des forces et limites de PGSQL dans la distribution.
@@ -224,4 +224,4 @@ Le modèle [MVCC](https://wiki.postgresql.org/wiki/MVCC) de PGSQL garantit que l
 6. Concurrency Control [PG documentation](https://www.postgresql.org/docs/current/mvcc.html)
 7. Understanding partitioning and sharding in Postgres and Citus. [Azure Database for PGSQL Blog](https://techcommunity.microsoft.com/blog/adforPGSQL/understanding-partitioning-and-sharding-in-postgres-and-citus/3891629)
 8. An Overview of Distributed  PGSQL Architectures. [Crunchydata Blog](https://www.crunchydata.com/blog/an-overview-of-distributed-PGSQL-architectures)
-9. How PostreSQL replication works. [Medium Blog](https://medium.com/moveax/how-PGSQL-replication-works-6288b3e6000e)
+9. How PostreSQL replication works. [Medium Blog](https://medium.com/moveax/how-postgresql-replication-works-6288b3e6000e)
