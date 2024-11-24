@@ -284,5 +284,56 @@ PGSQL ne supporte pas la réplication multi-leader nativement.  BDR est une exte
 ## Partionnement et sharding
 
 
-![2024-11-24_17-39-18.png](imgs/2024-11-24_17-39-18.png)
+![width:900](imgs/cake.png)
+
+> https://www.thegeekyminds.com/post/database-sharding-vs-partitioning
+
+```sql
+select username from users where company_id = 12; -- Entreprise 12
+select price from invoices where date >= '2024-05-01' AND date < '2024-06-01' -- Mai 2024
+select name from events where date = '2024-05-01' -- Jour spécifique
+```
+
+---
+
+![width:1100](./imgs/partionnement.png)
+
+<!-- --- -->
+<!---->
+<!-- ## Késako ? -->
+<!---->
+<!-- <div class="columns2"> -->
+<!---->
+<!-- <div> -->
+<!---->
+<!-- **Partionnement** -->
+<!---->
+<!-- </div> -->
+<!---->
+<!-- <div> -->
+<!---->
+<!-- **Sharding** -->
+<!---->
+<!-- </div> -->
+<!-- </div> -->
+<!---->
+
+<!-- --- -->
+<!-- ## 3 type de partionnements -->
+<!-- 1. Partitionnement par plages (range partitioning) -->
+<!-- 1. Partitionnement par liste (list partitioning) -->
+<!-- 1. Partitionnement par hachage (hash partitioning) -->
+<!---->
+<!-- <div style="display: flex"> -->
+<!---->
+<!-- ![width:400](imgs/multi-leader.jpg) -->
+<!---->
+<!-- <div style="margin-left: 20px"> -->
+<!---->
+<!---->
+<!-- - test -->
+<!-- - test -->
+<!---->
+<!-- </div> -->
+<!-- </div> -->
 
