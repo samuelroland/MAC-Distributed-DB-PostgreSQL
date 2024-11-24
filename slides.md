@@ -252,6 +252,8 @@ Les conflits apparaissent lorsque deux nœuds modifient simultanément une même
 
 -->
 
+![](imgs\multi-leader.jpg)
+
 PGSQL ne supporte pas la réplication multi-leader nativement.  BDR est une extension pour la réplication multi-leader basée sur le logical replication:
 
 - Chaque nœud agit comme un leader capable d’accepter des écritures
