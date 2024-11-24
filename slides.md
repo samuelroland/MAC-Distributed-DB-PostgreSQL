@@ -45,12 +45,12 @@ style: |
     section:not([class=lead]) > p, blockquote {
         text-align: justify;
     }
-    .columns {
+    .columns2 {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 1rem;
     }
-    .columns {
+    .columns3 {
         display: grid;
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 1rem;
@@ -124,7 +124,7 @@ Il existe deux modes de Streaming replication, synchrone et asynchrone.
 
 -->
 
-<div class="columns">
+<div class="columns2">
 
 <div>
 
@@ -140,10 +140,11 @@ Il existe deux modes de Streaming replication, synchrone et asynchrone.
 
 <div>
 
-![width:700](imgs/cascade.png)
+![width:600](imgs/cascade.png)
 
 </div>
 </div>
+
 ---
 
 ### Qu’est-ce que la Logical Replication ?
@@ -201,7 +202,7 @@ Il existe deux modes de Streaming replication, synchrone et asynchrone.
 
 ### Streaming vs Logical Replication
 
-<div class="columns">
+<div class="columns3">
 <div>
 
 **Streaming Replication**
@@ -252,7 +253,11 @@ Les conflits apparaissent lorsque deux nœuds modifient simultanément une même
 
 -->
 
-![](imgs\multi-leader.jpg)
+<div style="display: flex">
+
+![width:400](imgs/multi-leader.jpg)
+
+<div style="margin-left: 20px">
 
 PGSQL ne supporte pas la réplication multi-leader nativement.  BDR est une extension pour la réplication multi-leader basée sur le logical replication:
 
@@ -270,6 +275,9 @@ PGSQL ne supporte pas la réplication multi-leader nativement.  BDR est une exte
 
 - Complexité : gestion des conflits entre les nœuds.
 - Licence commerciale et non open-source complète.
+
+</div>
+</div>
 
 ---
 
