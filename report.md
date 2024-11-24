@@ -132,8 +132,7 @@ PGSQL supporte trois types principaux de partitionnement:
 Les avantages du partitionnement sont multiples :
 
 1. **Amélioration des performances des requêtes** : Les partitions pertinentes sont ciblées, limitant les recherches inutiles.
-2. **Suppression efficace des anciennes données** : Les partitions obsolètes peuvent être supprimées rapidement avec `DROP TABLE`, évitant les problèmes de fragmentation.
-3. **Gestion optimisée de l’autovacuum** : Chaque partition peut être analysée indépendamment, ce qui réduit les blocages sur des tables volumineuses.
+2. **Suppression efficace des données par sous table** : Les partitions obsolètes peuvent être supprimées rapidement avec `DROP TABLE`, évitant les problèmes de fragmentation. Par ex. toutes les données d'une région peuvent être supprimées facilement dans une seule table si il y a un shard par région.
 
 Cependant, le partitionnement natif reste limité à un nœud unique. Si les données ou la charge augmentent au-delà des capacités d’un serveur, cette approche ne suffit plus.
 
@@ -155,8 +154,8 @@ Ces techniques nécessitent des choix, notamment pour la clé de distribution da
 
 En plus de ça, le modèle de données doit être fait en prenant en compte des limitations :
 
-- Les relations entre les données doivent idéalement inclure la clé de distribution pour éviter les jointures entre les nœuds.
-- Les requêtes lourdes peuvent nécessiter des optimisations pour être parallélisées efficacement.
+- Les tables liées entre elles devraient utiliser la même clé de distribution, pour que les données associées soient regroupées dans le même shard, pour éviter les jointures entre différents nœuds du cluster.
+- Les requêtes lourdes (nombreux JOIN, nombreuses entrées) peuvent nécessiter des optimisations pour être parallélisées efficacement.
 
 ## 5. Gestion des pannes et rééquilibrage
 
@@ -172,9 +171,7 @@ Quand une réplique plante, PGSQL peut la remettre sur pied grâce à ses journa
 
 **Le leader en panne**
 
-La panne d’un leader est une toute autre histoire. Ici, on doit déclencher un [failover](https://www.postgresql.org/docs/17/warm-standby-failover.html) : promouvoir une réplique en tant que nouveau leader. Patroni surveille les nœuds via un système comme [Etcd](https://github.com/etcd-io/etcd) ou [ZooKeeper](https://zookeeper.apache.org/) et décide, en cas de besoin, qui prendra le relais. Une fois le failover terminé, il faut s’assurer que l’ancien leader ne revienne pas comme si de rien n’était : un mécanisme appelé [STONITH](https://en.wikipedia.org/wiki/STONITH) (Shoot The Other Node In The Head) veille à ce qu’un nœud défaillant ne cause pas de confusion.
-
-Si notre ancien leader revient en ligne après un failover, il faut utiliser `pg_rewind` pour le resynchroniser rapidement avec le nouveau leader. C’est plus rapide que de reconstruire une réplique à partir de zéro.
+La panne d’un leader est une toute autre histoire. Ici, on doit déclencher un [failover](https://www.postgresql.org/docs/17/warm-standby-failover.html) : promouvoir une réplique en tant que nouveau leader. Patroni surveille les nœuds via un système comme [Etcd](https://github.com/etcd-io/etcd) ou [ZooKeeper](https://zookeeper.apache.org/) et décide, en cas de besoin, qui prendra le relais. Une fois le failover terminé, il faut s’assurer que l’ancien leader ne revienne pas comme si de rien n’était : un mécanisme appelé [STONITH](https://en.wikipedia.org/wiki/STONITH) (Shoot The Other Node In The Head) empêche un ancien leader défaillant de reprendre son role de leader ce qui créerait une situation avec 2 leaders à la fois. Dans PGSQL, ce mécanisme peut être appliqué à l'aide de `pg_rewind` pour le resynchroniser rapidement avec le nouveau leader. C’est plus rapide que de reconstruire une réplique à partir de zéro.
 
 ### 5.2. Ajouter ou retirer une réplique
 
@@ -200,7 +197,7 @@ Un cluster n’est résilient que si ses mécanismes de récupération fonctionn
 
 ## 6. Conclusion
 
-PGSQL a su s'adapter quand il s’agit de bases de données distribuées. Avec des outils comme la réplication, le partitionnement et le sharding via des extensions comme Citus, il combine le meilleur des deux mondes : la robustesse des bases relationnelles et la flexibilité des systèmes distribués. Bien sûr, il faut jongler entre cohérence, disponibilité et tolérance aux pannes, comme le rappelle le théorème de CAP. Mais c’est justement là que PostgreSQL est intéressant, car il offre une palette d’options qui permet d’adapter les solutions aux besoins réels, qu’il s’agisse d’une petite application ou d’un système massif à grande échelle.
+PGSQL a su s'adapter aux besoins de bases de données distribuées. Avec des outils comme la réplication, le partitionnement et le sharding via des extensions comme Citus, il combine le meilleur des deux mondes : la robustesse des bases relationnelles et la flexibilité des systèmes distribués. Bien sûr, il faut jongler entre cohérence, disponibilité et tolérance aux pannes, comme le rappelle le théorème de CAP. Mais c’est justement là que PGSQL est intéressant, car il offre une palette d’options qui permet d’adapter les solutions aux besoins réels, qu’il s’agisse d’une petite application ou d’un système à grande échelle.
 
 ## Références
 
