@@ -3,6 +3,7 @@
 **Auteurs :** Samuel Roland, Timothée Van Hove
 
 ## 1. Introduction
+
 Les bases de données relationnelles comme PostgreSQL (PGSQL) ont longtemps dominé le paysage des SGBD, en fournissant des transactions ACID et des requêtes SQL complexes. Pourtant, à mesure que les applications modernes sont devenues plus globales et intensives en données, les limites d’un système sur une seule machine sont devenues évidentes. Que se passe-t-il lorsque cette machine atteint sa capacité maximale ? Que faire si elle tombe en panne ? Et comment gérer des millions d’utilisateurs répartis à travers le monde ?
 
 Ces défis ont ouvert la voie à une explosion des BD NoSQL, conçues dès le départ pour être distribués, sacrifiant souvent la complexité relationnelle pour fournir une disponibilité et scalabilité accrue. Cependant, tout n’est pas une question de « NoSQL contre SQL ». Les bases de données relationnelles, comme PGSQL, ont relevé le défi en évoluant pour intégrer des mécanismes distribués tout en préservant leurs forces historiques.
@@ -35,8 +36,6 @@ Par exemple, une entreprise qui migre progressivement ses données vers une nouv
 
 ### 2.4 Configuration et mise en œuvre de la réplication
 
-Configurer la réplication dans PGSQL nécessite de définir les rôles des serveurs (leader ou réplique) et d’ajuster certains paramètres clés.
-
 **Préparation du leader :**
 
 [Le serveur principal](https://www.postgresql.org/docs/current/runtime-config-replication.html#RUNTIME-CONFIG-REPLICATION-PRIMARY) (leader) doit être configuré pour activer la réplication. Ça inclut les étapes suivantes :
@@ -56,7 +55,7 @@ Les [serveurs standby,](https://www.postgresql.org/docs/current/runtime-config-r
 
 Pour activer la réplication synchrone, configurez :
 
-- `synchronous_standby_names` sur le leader pour spécifier les répliques synchrones. Vous pouvez utiliser des mots-clés comme `FIRST` ou `ANY` pour prioriser ou définir un quorum de répliques.
+- `synchronous_standby_names` sur le leader pour spécifier les répliques synchrones. Utiliser `FIRST` ou `ANY` pour prioriser ou définir un quorum de répliques.
 
 **Détection des pannes et délai de reprise :**
 
@@ -64,7 +63,7 @@ Les paramètres tels que `wal_sender_timeout` et `wal_receiver_timeout` permette
 
 **Surveillance de la réplication :**
 
-Des vues comme `pg_stat_replication` permettent de surveiller en temps réel l’état des connexions de réplication, y compris la position du WAL appliquée sur chaque réplique. Ces informations sont cruciales pour diagnostiquer des problèmes de décalage ou de performances.
+Des vues comme `pg_stat_replication` permettent de surveiller en temps réel l’état des connexions de réplication, y compris la position du WAL appliquée sur chaque réplique.
 
 ## 3. Cohérence et modèles de consistance
 
@@ -102,8 +101,6 @@ Pour les applications analytiques ou massivement parallèles, une approche moins
 ### 3.5 Quand la cohérence rencontre la concurrence : MVCC et isolation
 
 Le modèle [MVCC](https://wiki.postgresql.org/wiki/MVCC) de PGSQL garantit que les lectures et les écritures ne se bloquent pas mutuellement, même sous des niveaux d’isolation élevés comme `Serializable`. Ce modèle offre une cohérence instantanée à chaque transaction, tout en minimisant les verrous. Cependant, pour des besoins très stricts, on peut utiliser des transactions [serialisables](https://www.postgresql.org/docs/current/transaction-iso.html#XACT-SERIALIZABLE) ou des [verrous explicites](https://www.postgresql.org/docs/current/explicit-locking.html) pour éviter les anomalies.
-
-
 
 ## 4. Partitionnement et sharding
 
@@ -217,3 +214,4 @@ PGSQL a su s'adapter quand il s’agit de bases de données distribuées. Avec d
 8. An Overview of Distributed  PGSQL Architectures. [Crunchydata Blog](https://www.crunchydata.com/blog/an-overview-of-distributed-PGSQL-architectures)
 9. How PostreSQL replication works. [Medium Blog](https://medium.com/moveax/how-postgresql-replication-works-6288b3e6000e)
 10. Database Sharding vs. Partitioning. [Baelung Blog](https://www.baeldung.com/cs/database-sharding-vs-partitioning)
+
